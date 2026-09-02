@@ -744,6 +744,58 @@ function renderTcNames() {
   box.innerHTML = html;
 }
 
+/* TC5のバックアップJSON（{名前:{日付:[…]}}）から名前だけ取り出す */
+function namesFromTc5Backup(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return [];
+  const names = [];
+  for (const key in obj) {
+    const days = obj[key];
+    if (!days || typeof days !== 'object' || Array.isArray(days)) continue;
+    // 値が「日付 → 配列」になっていればTC5の勤怠データとみなす
+    const looksLikeDays = Object.keys(days).some(d =>
+      /^\d{4}-\d{2}-\d{2}$/.test(d) && Array.isArray(days[d]));
+    if (looksLikeDays) names.push(key);
+  }
+  return names;
+}
+
+function handleTcNameJsonFiles(files) {
+  const found = [];
+  let done = 0, bad = 0;
+  for (const file of files) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const names = namesFromTc5Backup(JSON.parse(ev.target.result));
+        if (!names.length) bad++;
+        names.forEach(n => { if (!found.includes(n)) found.push(n); });
+      } catch { bad++; }
+      if (++done === files.length) {
+        if (!found.length) {
+          showToast('TC5の勤怠データが見つかりませんでした（バックアップJSONを選んでください）', 'warning');
+          return;
+        }
+        const cur = tcNames();
+        const add = found.filter(n => !cur.includes(n));
+        const already = found.length - add.length;
+        if (!add.length) {
+          showToast(`${found.length}人ぶん読みましたが、全員すでに登録済みです`, 'info');
+          return;
+        }
+        if (!confirm(`TC5の勤怠データから ${found.length}人 見つかりました。\n`
+          + `新しく追加する ${add.length}人：${add.join('、')}\n`
+          + (already ? `（${already}人はすでに登録済み）\n` : '')
+          + '\n今の一覧のうしろに追加します。よろしいですか？')) return;
+        DB.tcNames = [...cur, ...add];
+        saveDB();
+        renderAll();
+        showToast(`${add.length}人を追加しました${bad ? `（${bad}ファイルは読めませんでした）` : ''}`, 'success');
+      }
+    };
+    reader.readAsText(file);
+  }
+}
+
 function saveTcNames() {
   const list = document.getElementById('tcNameText').value
     .split(/[\n,、]/).map(v => v.trim()).filter(Boolean);
@@ -791,6 +843,7 @@ function renderEmpTable() {
 /* ============ 5. 有給入力 ============ */
 
 let lastLeaveRows = [];                // 一覧に出ている有給（まとめて削除に使う）
+let editingLeaveId = null;             // 編集中の有給のid
 let paidSelected = new Set();          // 選択中の日付
 let paidCursor = new Date();           // カレンダー表示中の月
 let inputType = 'full';
@@ -850,10 +903,10 @@ function applyShiftDefault() {
   if (!emp) { hint.textContent = ''; return; }
   const sh = emp.shift || {};
   document.getElementById('inTypeHint').textContent = (emp.type || 'part') === 'staff'
-    ? '正職方式：年度ごとに時間で積み上げて集計します。TC5は使わないので勤務時間帯は不要です。'
+    ? '正職方式：年度ごとに時間で積み上げて集計します。'
     : 'パート方式：管理簿の日数として数え、勤務時間帯を入れるとTC5へ出せます。';
   hint.textContent = (emp.type || 'part') === 'staff'
-    ? `${emp.name} の1日の勤務時間：${emp.dailyHours}時間`
+    ? `${emp.name} の1日の勤務時間：${emp.dailyHours}時間。時間帯を入れると時間数が自動で入ります。`
     : sh.in1
       ? `${emp.name} の所定：${sh.in1}〜${sh.out1}${sh.in2 ? ` / ${sh.in2}〜${sh.out2}` : ''}（1日 ${emp.dailyHours}時間）`
       : `${emp.name} は所定の勤務時間帯が未設定です。従業員マスタで登録すると自動で入ります。`;
@@ -871,6 +924,31 @@ function inputHours() {
   return parseHM(document.getElementById('inHours').value);
 }
 
+// "08:00" と "10:30" の間の分数（日をまたぐときは翌日扱い）
+function minutesBetween(from, to) {
+  if (!from || !to) return 0;
+  const [h1, m1] = from.split(':').map(Number);
+  const [h2, m2] = to.split(':').map(Number);
+  let d = (h2 * 60 + m2) - (h1 * 60 + m1);
+  if (d < 0) d += 24 * 60;
+  return d;
+}
+
+// 入力欄の時間帯①②を足した時間数
+function timesTotalHours() {
+  const v = id => document.getElementById(id).value;
+  return (minutesBetween(v('inTime1a'), v('inTime1b'))
+        + minutesBetween(v('inTime2a'), v('inTime2b'))) / 60;
+}
+
+// 時間帯を入れたら時間数の欄を自動で埋める（時間単位のときだけ）
+function syncHoursFromTimes() {
+  if (inputType !== 'hours') return;
+  const t = timesTotalHours();
+  if (t > 0) document.getElementById('inHours').value = fmtHM(t);
+  renderBalancePreview();
+}
+
 // 選んだ人の方式に合わせて入力欄の出し方を変える
 //   正職方式 … 正職ツールと同じで「時間」だけを入れる。全日／半休の区別はない
 //   パート方式 … 管理簿と同じで 全日／半休／時間単位 から選ぶ
@@ -879,13 +957,10 @@ function applyInputMode() {
   const staff = emp && (emp.type || 'part') === 'staff';
   renderInputTerms();
   document.getElementById('inTypeField').classList.toggle('hidden', !!staff);
-  // 正職はTC5を使わないので、TC5へ出す勤務時間帯は出さない
-  document.getElementById('inShiftField').classList.toggle('hidden', !!staff);
-  if (staff) {
-    for (const id of ['inTime1a', 'inTime1b', 'inTime2a', 'inTime2b']) {
-      document.getElementById(id).value = '';
-    }
-  }
+  // 時間帯はどちらの方式でも使う（正職は時間の計算用、パートはTC5へ渡す用）
+  document.getElementById('inShiftLabel').textContent = staff
+    ? '有給を取った時間帯（何時から何時まで）'
+    : 'TC5に出す勤務時間帯';
   if (staff && inputType !== 'hours') setInputType('hours');
   else setInputType(inputType);
 }
@@ -911,8 +986,8 @@ function setInputType(type) {
          <button type="button" data-h="0:30">30分</button>`
       : '';
     document.getElementById('hoursHint').textContent = staff
-      ? `「2:30」でも「2.5」でもOK。年度の合計を1日${daily}時間で日数に換算します。`
-      : `1日${daily}時間で日数に換算します（時間単位年休は年5日分が上限）。`;
+      ? `上の時間帯を入れると自動で入ります。直接「2:30」「2.5」と書いてもOK。年度の合計を1日${daily}時間で日数に換算します。`
+      : `上の時間帯を入れると自動で入ります。1日${daily}時間で日数に換算します（時間単位年休は年5日分が上限）。`;
   }
 
   if (type === 'full') {
@@ -1008,6 +1083,51 @@ function renderBalancePreview() {
   box.innerHTML = html;
 }
 
+/* 登録済みの1件をフォームに読み込んで編集する */
+function startEditLeave(id) {
+  const l = DB.leaves.find(x => x.id === id);
+  const emp = l && getEmp(l.empId);
+  if (!emp) return;
+
+  editingLeaveId = id;
+  document.getElementById('inEmp').value = emp.id;
+  applyShiftDefault();
+  applyInputMode();
+  setInputType(l.type);
+
+  paidSelected = new Set([l.date]);
+  syncDatesField();
+  document.getElementById('inHours').value = l.type === 'hours' ? leaveHoursText(l) : '';
+  document.getElementById('inTime1a').value = l.in1 || '';
+  document.getElementById('inTime1b').value = l.out1 || '';
+  document.getElementById('inTime2a').value = l.in2 || '';
+  document.getElementById('inTime2b').value = l.out2 || '';
+  document.getElementById('inNote').value = l.note || '';
+
+  document.getElementById('inSubmit').textContent = 'この内容で更新';
+  document.getElementById('inCancelEdit').classList.remove('hidden');
+  renderCalendar();
+  renderBalancePreview();
+  renderInputTerms();
+  renderLeaveTable();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function cancelEditLeave(keepForm) {
+  editingLeaveId = null;
+  document.getElementById('inSubmit').textContent = 'この内容で登録';
+  document.getElementById('inCancelEdit').classList.add('hidden');
+  if (!keepForm) {
+    paidSelected.clear();
+    syncDatesField();
+    document.getElementById('inHours').value = '';
+    document.getElementById('inNote').value = '';
+    renderCalendar();
+    renderBalancePreview();
+  }
+  renderLeaveTable();
+}
+
 function submitLeave() {
   const emp = getEmp(document.getElementById('inEmp').value);
   if (!emp) { showToast('従業員を選んでください', 'warning'); return; }
@@ -1030,6 +1150,25 @@ function submitLeave() {
   }
   if (!in1 && (emp.type || 'part') === 'part') {
     if (!confirm('勤務時間帯が空です。この状態だとTC5用JSONには出力されません（有給の日数管理だけになります）。このまま登録しますか？')) return;
+  }
+
+  // 編集中なら、その1件を書き換える
+  if (editingLeaveId) {
+    const l = DB.leaves.find(x => x.id === editingLeaveId);
+    if (!l) { cancelEditLeave(); return; }
+    if (dates.length > 1) { showToast('編集は1日ずつです。日付を1つだけ選んでください', 'warning'); return; }
+    Object.assign(l, {
+      empId: emp.id, date: dates[0], type: inputType,
+      hours: inputType === 'hours' ? hours : 0,
+      hoursText: inputType === 'hours' ? fmtHM(hours) : '',
+      in1, out1, in2, out2,
+      note: document.getElementById('inNote').value.trim()
+    });
+    saveDB();
+    cancelEditLeave();
+    renderAll();
+    showToast(`${emp.name} ${fmtDate(dates[0])} を更新しました`, 'success');
+    return;
   }
 
   let added = 0, skipped = 0;
@@ -1076,19 +1215,23 @@ function renderLeaveTable() {
     return;
   }
   tbody.innerHTML = rows.slice(0, 500).map(({ l, emp }) => {
+    const editing = l.id === editingLeaveId;
     const cls = l.type === 'full' ? 'full' : l.type === 'hours' ? 'hours' : 'half';
     const time = l.in1 ? `${l.in1}〜${l.out1}` + (l.in2 ? ` / ${l.in2}〜${l.out2}` : '')
       : (emp.type || 'part') === 'part'
         ? '<span class="tag warn">時間なし</span>'      // パートはTC5へ出すので時間帯が要る
         : '<span class="hint">—</span>';
-    return `<tr>
+    return `<tr${editing ? ' class="editing"' : ''}>
       <td><input type="checkbox" class="leaveChk" data-id="${l.id}"></td>
       <td>${fmtDate(l.date)}</td>
       <td>${esc(emp.name)}${emp.mode === 'swim' ? ' <span class="tag swim">SW</span>' : ''}</td>
       <td><span class="tag ${cls}">${TYPE_LABEL[l.type]}${l.type === 'hours' ? ` ${leaveHoursText(l)}` : ''}</span></td>
       <td class="num">${fmtDays(leaveDays(l, emp), emp.dailyHours)}</td>
       <td>${time}</td>
-      <td><button type="button" class="btn mini" data-del="${l.id}">削除</button></td>
+      <td>
+        <button type="button" class="btn mini" data-edit="${l.id}">編集</button>
+        <button type="button" class="btn mini danger" data-del="${l.id}">削除</button>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -2325,6 +2468,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- 有給入力 ---
   document.getElementById('inEmp').addEventListener('change', () => {
+    // 前に選んでいた人の時間帯が残らないように一度消す（全日ならこのあと所定が入る）
+    for (const id of ['inTime1a', 'inTime1b', 'inTime2a', 'inTime2b']) {
+      document.getElementById(id).value = '';
+    }
+    document.getElementById('inHours').value = '';
     applyShiftDefault(); applyInputMode(); renderCalendar(); renderBalancePreview();
   });
   document.getElementById('paidCalendar').addEventListener('click', e => {
@@ -2370,7 +2518,16 @@ document.addEventListener('DOMContentLoaded', () => {
     renderBalancePreview();
   });
   document.getElementById('inSubmit').addEventListener('click', submitLeave);
+  document.getElementById('inCancelEdit').addEventListener('click', () => {
+    cancelEditLeave();
+    showToast('編集をやめました', 'info');
+  });
+  // 時間帯を入れたら時間数を自動計算
+  for (const id of ['inTime1a', 'inTime1b', 'inTime2a', 'inTime2b']) {
+    document.getElementById(id).addEventListener('change', syncHoursFromTimes);
+  }
   document.getElementById('inClear').addEventListener('click', () => {
+    cancelEditLeave(true);
     paidSelected.clear(); syncDatesField();
     document.getElementById('inHours').value = '';
     document.getElementById('inNote').value = '';
@@ -2401,6 +2558,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('leaveSearch').addEventListener('input', renderLeaveTable);
   document.getElementById('leaveMonth').addEventListener('change', renderLeaveTable);
   document.querySelector('#leaveTable tbody').addEventListener('click', e => {
+    const ed = e.target.closest('button[data-edit]');
+    if (ed) { startEditLeave(ed.dataset.edit); return; }
     const b = e.target.closest('button[data-del]');
     if (!b) return;
     const l = DB.leaves.find(x => x.id === b.dataset.del);
@@ -2526,6 +2685,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('tcNameSave').addEventListener('click', saveTcNames);
+  document.getElementById('tcNameJsonBtn').addEventListener('click', () =>
+    document.getElementById('tcNameJsonFile').click());
+  document.getElementById('tcNameJsonFile').addEventListener('change', e => {
+    if (e.target.files.length) handleTcNameJsonFiles([...e.target.files]);
+    e.target.value = '';
+  });
   document.getElementById('tcNameReset').addEventListener('click', () => {
     if (!confirm('TC5の登録名をすべて消します。よろしいですか？')) return;
     DB.tcNames = [];

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>年次有給休暇 管理ツール 1.0.0</title>
-<link rel="stylesheet" href="styles.css?v=1.6.0">
+<link rel="stylesheet" href="styles.css?v=1.7.0">
 </head>
 <body>
 
@@ -13,7 +13,7 @@
     <span class="brand-icon">🏖</span>
     <div>
       <h1>年次有給休暇 管理ツール</h1>
-      <div class="brand-sub">入力はここだけ。TC5へはJSONで受け渡し。<span class="ver">v1.6.0</span></div>
+      <div class="brand-sub">入力はここだけ。TC5へはJSONで受け渡し。<span class="ver">v1.7.0</span></div>
     </div>
   </div>
   <div class="header-right">
@@ -71,7 +71,7 @@
       <div class="hint" id="inTypeHint"></div>
 
       <div class="field" id="inShiftField">
-        <label>TC5に出す勤務時間帯</label>
+        <label id="inShiftLabel">TC5に出す勤務時間帯</label>
         <div class="time-row">
           <input type="time" id="inTime1a"><span>〜</span><input type="time" id="inTime1b">
         </div>
@@ -96,6 +96,7 @@
 
       <div class="btn-row">
         <button type="button" id="inSubmit" class="btn primary">この内容で登録</button>
+        <button type="button" id="inCancelEdit" class="btn hidden">編集をやめる</button>
         <button type="button" id="inClear" class="btn">クリア</button>
       </div>
     </div>
@@ -261,9 +262,17 @@
                   placeholder="TC5の勤怠一覧に出ている名前を、TC5と同じ並び順で1行ずつ"></textarea>
       </div>
       <div id="tcNameArea"></div>
-      <div class="btn-row">
+      <input type="file" id="tcNameJsonFile" accept=".json" multiple hidden>
+      <div class="btn-row wrap">
         <button type="button" id="tcNameSave" class="btn primary">保存</button>
+        <button type="button" id="tcNameJsonBtn" class="btn">📥 TC5の勤怠データから名前を読む</button>
         <button type="button" id="tcNameReset" class="btn">全部消す</button>
+      </div>
+      <div class="hint">
+        「TC5の勤怠データから名前を読む」は、TC5の<b>バックアップJSON</b>
+        （<code>勤怠バックアップ_通常_R8.5-6_20260611.json</code> など）を選ぶと、
+        中に入っている名前をそのまま登録名に取り込みます。打ち間違いが起きません。
+        通常とスイミングの両方を選べばまとめて読み込めます。
       </div>
     </div>
 
@@ -427,6 +436,6 @@
 <div id="toastArea"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
-<script src="script.js?v=1.6.0"></script>
+<script src="script.js?v=1.7.0"></script>
 </body>
 </html>
