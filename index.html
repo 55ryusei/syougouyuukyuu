@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>年次有給休暇 管理ツール 1.0.0</title>
+<link rel="stylesheet" href="styles.css?v=1.6.0">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <span class="brand-icon">🏖</span>
+    <div>
+      <h1>年次有給休暇 管理ツール</h1>
+      <div class="brand-sub">入力はここだけ。TC5へはJSONで受け渡し。<span class="ver">v1.6.0</span></div>
+    </div>
+  </div>
+  <div class="header-right">
+    <button type="button" id="saveBtn" class="btn save-btn">💾 保存</button>
+    <button type="button" id="themeToggle" class="icon-btn" title="ダークモード">🌙</button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button type="button" data-tab="input" class="active">✍️ 有給入力</button>
+  <button type="button" data-tab="part">📒 パート</button>
+  <button type="button" data-tab="staff">📈 正職</button>
+  <button type="button" data-tab="emp">👤 従業員情報</button>
+  <button type="button" data-tab="io">🔄 取込・出力</button>
+</nav>
+
+<main>
+
+<!-- ============ 有給入力 ============ -->
+<section class="tab-panel active" id="tab-input">
+  <div class="grid-2">
+
+    <div class="card">
+      <h2>有給を登録</h2>
+
+      <div class="field">
+        <label for="inEmp">従業員</label>
+        <select id="inEmp"></select>
+      </div>
+
+      <div class="field">
+        <label>取得日（カレンダーをクリックで複数選択）</label>
+        <div id="paidCalendar" class="calendar"></div>
+        <input type="text" id="inDates" placeholder="例: 2026-05-12, 2026-05-13" autocomplete="off">
+        <div class="hint">カレンダーで選ぶと自動で入ります。直接書いてもOK（カンマ区切り・YYYY-MM-DD）。</div>
+      </div>
+
+      <div class="field" id="inTypeField">
+        <label>取得の単位</label>
+        <div id="inType" class="seg">
+          <button type="button" data-type="full" class="active">全日</button>
+          <button type="button" data-type="am">午前半休</button>
+          <button type="button" data-type="pm">午後半休</button>
+          <button type="button" data-type="hours">時間単位</button>
+        </div>
+      </div>
+
+      <div class="field hidden" id="hoursField">
+        <label for="inHours" id="hoursLabel">有給として取得した時間</label>
+        <input type="text" id="inHours" placeholder="例: 2:30" autocomplete="off" inputmode="text">
+        <div class="seg quick" id="hoursQuick"></div>
+        <div class="hint" id="hoursHint"></div>
+      </div>
+
+      <div class="hint" id="inTypeHint"></div>
+
+      <div class="field" id="inShiftField">
+        <label>TC5に出す勤務時間帯</label>
+        <div class="time-row">
+          <input type="time" id="inTime1a"><span>〜</span><input type="time" id="inTime1b">
+        </div>
+        <div class="time-row">
+          <input type="time" id="inTime2a"><span>〜</span><input type="time" id="inTime2b">
+          <span class="hint inline">②は中抜けの人だけ</span>
+        </div>
+        <div class="hint" id="shiftHint"></div>
+      </div>
+
+      <div class="field">
+        <label for="inNote">メモ（任意）</label>
+        <input type="text" id="inNote" placeholder="例: 私用" autocomplete="off">
+      </div>
+
+      <div id="balancePreview" class="balance-preview"></div>
+
+      <div class="field hidden" id="inTermField">
+        <label>長期休暇（夏期・冬期・春期）</label>
+        <div id="inTermArea"></div>
+      </div>
+
+      <div class="btn-row">
+        <button type="button" id="inSubmit" class="btn primary">この内容で登録</button>
+        <button type="button" id="inClear" class="btn">クリア</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>登録済みの有給 <span class="count" id="leaveCount"></span></h2>
+      <div class="field row">
+        <input type="search" id="leaveSearch" placeholder="名前で絞り込み">
+        <select id="leaveMonth"></select>
+      </div>
+      <div class="list-tools">
+        <label class="chk-all"><input type="checkbox" id="leaveCheckAll"> 全部選ぶ</label>
+        <button type="button" id="leaveDeleteChecked" class="btn danger small">チェックした行を削除</button>
+        <button type="button" id="leaveDeleteFiltered" class="btn danger small">絞り込み中の全件を削除</button>
+      </div>
+      <div class="table-wrap tall">
+        <table id="leaveTable">
+          <thead><tr><th class="chk"></th><th>日付</th><th>氏名</th><th>単位</th><th>日数</th><th>時間帯</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ パート（残日数一覧＋管理簿） ============ -->
+<section class="tab-panel" id="tab-part">
+  <div class="card">
+    <h2>全員の残日数（本日時点）</h2>
+    <div class="hint">「義務5日」＝ 付与から1年以内に取らせる5日のうち、あと何日残っているか（時間単位年休は含みません）。</div>
+    <div class="table-wrap">
+      <table id="ledgerTable">
+        <thead><tr>
+          <th>氏名</th><th>TC5表記</th><th>入社日</th><th>週日数</th>
+          <th>直近付与日</th><th>付与</th><th>繰越</th><th>計</th>
+          <th>取得<br><span class="hint">予定含む</span></th><th>残</th><th>義務5日</th><th>次回付与</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="book-toolbar">
+      <div class="field" style="margin:0;flex:1;min-width:220px">
+        <label for="bookEmp">従業員</label>
+        <select id="bookEmp"></select>
+      </div>
+      <button type="button" id="bookPrintBtn" class="btn">🖨 印刷</button>
+      <button type="button" id="bookXlsxOne" class="btn">📗 この人をExcel</button>
+      <button type="button" id="bookXlsxAll" class="btn primary">📗 全員をExcel</button>
+    </div>
+    <div id="bookArea"></div>
+  </div>
+</section>
+
+<!-- ============ 正職（長期休暇の入力＋集計） ============ -->
+<section class="tab-panel" id="tab-staff">
+
+  <div class="card">
+    <div class="book-toolbar">
+      <div class="field" style="margin:0;flex:1;min-width:220px">
+        <label for="staffYear">年度</label>
+        <select id="staffYear"></select>
+      </div>
+      <button type="button" id="staffPrintBtn" class="btn">🖨 印刷</button>
+      <button type="button" id="staffCsvBtn" class="btn primary">📄 CSVで出力</button>
+    </div>
+    <h2>🏖 長期休暇の設定（夏期・冬期・春期）</h2>
+    <div id="termArea"></div>
+  </div>
+
+  <div class="card">
+    <div class="book-toolbar">
+      <h2 style="margin:0;flex:1">📅 月別表</h2>
+      <button type="button" id="gridPrintBtn" class="btn">🖨 印刷</button>
+    </div>
+    <div id="gridArea"></div>
+  </div>
+
+  <div class="card">
+    <h2>📊 有給取得 集計表</h2>
+    <div id="staffArea"></div>
+  </div>
+</section>
+
+<!-- ============ 従業員マスタ ============ -->
+<section class="tab-panel" id="tab-emp">
+
+  <div class="card hidden" id="dupCard">
+    <h2>⚠ 同じ人が2つ以上登録されています</h2>
+    <div class="hint">
+      取込のたびに氏名の書き方が変わると別人として登録されることがあります。<br>
+      <b>これにまとめる</b>＝その人に有給をぜんぶ移して、残りを削除します（氏名・入社日などの空欄は相手の値で埋まります）。<br>
+      <b>この行を削除</b>＝その人と、その人に付いている有給だけを消します。
+    </div>
+    <div id="dupArea"></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2 id="empFormTitle">従業員を追加</h2>
+      <input type="hidden" id="empId">
+      <div class="field"><label for="empName">氏名（管理簿の表記）</label><input type="text" id="empName" placeholder="山田　花子"></div>
+      <div class="field"><label for="empKana">ふりがな</label><input type="text" id="empKana" placeholder="やまだ　はなこ"></div>
+      <div class="field" id="empTcField">
+        <label for="empTcName">TC5での名前 <span class="req">必須</span></label>
+        <input type="text" id="empTcName" list="tcNameList" placeholder="TC5に出ている名前">
+        <datalist id="tcNameList"></datalist>
+        <div class="hint">TC5の勤怠一覧に出ている名前と<b>1文字違わず</b>同じにしてください。ここがJSONのキーになります。</div>
+      </div>
+      <div class="field">
+        <label for="empType">管理方式 <span class="req">重要</span></label>
+        <select id="empType">
+          <option value="part">パート方式（見本Excelの管理簿）</option>
+          <option value="staff">正職方式（年度・時間で集計）</option>
+        </select>
+        <div class="hint" id="empTypeHint"></div>
+      </div>
+      <div class="field row">
+        <div><label for="empMode">区分</label>
+          <select id="empMode"><option value="normal">通常</option><option value="swim">スイミング</option></select></div>
+        <div><label for="empDailyHours">1日の勤務時間</label>
+          <input type="number" id="empDailyHours" step="0.25" min="1" value="8"></div>
+      </div>
+      <div id="empPartFields">
+        <div class="field row">
+          <div><label for="empHire">入社日</label><input type="date" id="empHire"></div>
+          <div><label for="empWeekDays">週の所定労働日数（既定）</label>
+            <select id="empWeekDays">
+              <option value="5">5日以上（通常の付与）</option>
+              <option value="4">4日</option><option value="3">3日</option>
+              <option value="2">2日</option><option value="1">1日</option>
+            </select></div>
+        </div>
+      </div>
+      <div class="field" id="empShiftField">
+        <label>所定の勤務時間帯（全日有給のときTC5へ出す時間）</label>
+        <div class="time-row"><input type="time" id="empT1a"><span>〜</span><input type="time" id="empT1b"></div>
+        <div class="time-row"><input type="time" id="empT2a"><span>〜</span><input type="time" id="empT2b">
+          <span class="hint inline">②は中抜けの人だけ</span></div>
+      </div>
+      <div class="field">
+        <label><input type="checkbox" id="empActive" checked> 在籍中</label>
+      </div>
+      <div class="btn-row">
+        <button type="button" id="empSave" class="btn primary">保存</button>
+        <button type="button" id="empCancel" class="btn hidden">キャンセル</button>
+        <button type="button" id="empDelete" class="btn danger hidden">削除</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>TC5の登録名</h2>
+      <div class="hint">
+        TC5の勤怠一覧に出ている名前を、<b>TC5と同じ並び順</b>で1行ずつ書いてください。
+        ここに入れた名前が、上のフォームの「TC5での名前」の候補になり、一覧の並び順にも使われます。<br>
+        TC5の画面から名前をコピーして貼り付けてもOK（カンマ・読点区切りでも読み取ります）。
+      </div>
+      <div class="field">
+        <textarea id="tcNameText" rows="10" spellcheck="false"
+                  placeholder="TC5の勤怠一覧に出ている名前を、TC5と同じ並び順で1行ずつ"></textarea>
+      </div>
+      <div id="tcNameArea"></div>
+      <div class="btn-row">
+        <button type="button" id="tcNameSave" class="btn primary">保存</button>
+        <button type="button" id="tcNameReset" class="btn">全部消す</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>従業員一覧 <span class="count" id="empCount"></span></h2>
+      <div class="list-tools">
+        <label class="chk-all"><input type="checkbox" id="empCheckAll"> 全部選ぶ</label>
+        <button type="button" id="empDeleteChecked" class="btn danger small">チェックした人を削除</button>
+      </div>
+      <div class="table-wrap tall">
+        <table id="empTable">
+          <thead><tr><th class="chk"></th><th>氏名</th><th>TC5表記</th><th>方式</th><th>区分</th><th>条件</th><th>勤務時間帯</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 取込・出力 ============ -->
+<section class="tab-panel" id="tab-io">
+  <div class="grid-2">
+
+    <div class="card">
+      <h2>①-1 パートの既存Excel（年次有給休暇管理簿）から取込</h2>
+      <div class="hint">
+        「見本★年次有給休暇.xlsx」と同じ体裁のファイルを選んでください。複数ファイル・複数シートまとめて可。<br>
+        読み取る場所：氏名 <code>C3</code>／ふりがな <code>C2</code>／入社日 <code>C5</code>／週労働日数 <code>C列</code>／取得日 <code>N〜AG列の上段</code>・日数 <code>下段</code>
+      </div>
+      <input type="file" id="xlsxFile" accept=".xlsx,.xls" multiple hidden>
+      <div class="btn-row">
+        <button type="button" id="xlsxBtn" class="btn primary">Excelを選ぶ</button>
+      </div>
+      <div id="importResult" class="import-result"></div>
+      <div class="hint">※ここで取り込むのは<b>パート方式</b>の管理簿です。</div>
+    </div>
+
+    <div class="card">
+      <h2>①-2 正職ツールのJSONから取込</h2>
+      <div class="hint">
+        今まで正職で使っていた有給管理ツールの書き出し（<code>有給管理_2026年度.json</code> など）を選んでください。
+        年度ごとのファイルをまとめて選べます。<br>
+        取り込むもの：スタッフ名・1日の勤務時間・有給の記録（時間）・長期休暇の最大日数と出勤数。
+      </div>
+      <input type="file" id="staffJsonFile" accept=".json" multiple hidden>
+      <div class="btn-row">
+        <button type="button" id="staffJsonBtn" class="btn primary">正職ツールのJSONを選ぶ</button>
+      </div>
+      <div id="staffImportResult" class="import-result"></div>
+    </div>
+
+    <div class="card">
+      <h2>② TC5へ渡すJSONを出力</h2>
+      <div class="field row">
+        <div><label for="expFrom">開始日</label><input type="date" id="expFrom"></div>
+        <div><label for="expTo">終了日</label><input type="date" id="expTo"></div>
+      </div>
+      <div class="btn-row wrap">
+        <button type="button" id="expPeriodPrev" class="btn small">前の締め期間</button>
+        <button type="button" id="expPeriodCur" class="btn small">今の締め期間</button>
+        <button type="button" id="expPeriodNext" class="btn small">次の締め期間</button>
+      </div>
+      <div class="field">
+        <label for="expMode">出力する区分</label>
+        <select id="expMode">
+          <option value="normal">通常だけ</option>
+          <option value="swim">スイミングだけ</option>
+        </select>
+        <div class="hint">TC5は通常とスイミングで保存領域が別なので、区分ごとに出力してそれぞれ取り込みます。<br>
+          <b>パート方式の人だけ</b>が出力されます（正職はTC5を使わないため対象外）。</div>
+      </div>
+      <div id="expPreview" class="import-result"></div>
+      <div class="btn-row">
+        <button type="button" id="expBtn" class="btn primary">JSONを書き出す</button>
+      </div>
+      <div class="hint">
+        <b>TC5での取り込み方</b>：TC5を開く → 出力した区分に切り替える → 「リストア」で このJSONを選ぶ → <b>統合</b> を押す。<br>
+        同じJSONを2回取り込んでも重複は自動で除外されます。
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>③ 有給の記録を選んで削除</h2>
+      <div class="hint">
+        取込をやり直したいときに使います。<b>従業員そのものは消えません</b>。<br>
+        1件ずつ消すなら「✍️ 有給入力」タブの一覧から、人ごと消すなら「👤 従業員マスタ」の一覧から消せます。
+      </div>
+      <div class="field row">
+        <div><label for="purgeSource">取込元</label>
+          <select id="purgeSource">
+            <option value="">すべて</option>
+            <option value="excel">Excel取込のものだけ</option>
+            <option value="staffjson">正職ツール取込のものだけ</option>
+            <option value="manual">手入力のものだけ</option>
+          </select></div>
+        <div><label for="purgeEmp">対象者</label>
+          <select id="purgeEmp"><option value="">全員</option></select></div>
+      </div>
+      <div class="field row">
+        <div><label for="purgeFrom">この日から（任意）</label><input type="date" id="purgeFrom"></div>
+        <div><label for="purgeTo">この日まで（任意）</label><input type="date" id="purgeTo"></div>
+      </div>
+      <div id="purgePreview" class="import-result"></div>
+      <div class="btn-row">
+        <button type="button" id="purgeBtn" class="btn danger">条件に合う有給を削除</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>④ 年度ごとのファイルに保存（おすすめ）</h2>
+      <div id="fsStatus" class="fs-status"></div>
+      <div class="hint">
+        フォルダを1つ決めておくと、<b>変更するたびに年度ごとのファイルへ自動保存</b>します。
+        パソコンを変えても、そのフォルダを選べば続きから使えます（<b>Ctrl+S</b> でも保存）。<br>
+        ファイル名は <code>有給管理データ_2026年度.json</code>。1つのファイルに
+        「従業員マスタ全部＋その年度の有給＋その年度の設定」が入るので、どの年度からでも復元できます。<br>
+        ⚠ 今までの正職ツールの <code>有給管理_2026年度.json</code> とは<b>別の名前</b>です。
+        同じフォルダに置いても上書きしません。
+      </div>
+      <div id="fsSupported">
+        <div class="btn-row wrap">
+          <button type="button" id="fsLinkBtn" class="btn primary">📁 フォルダを選ぶ</button>
+          <button type="button" id="fsLoadBtn" class="btn">📂 フォルダから読み込む</button>
+          <button type="button" id="fsSaveBtn" class="btn">💾 今すぐ保存</button>
+        </div>
+      </div>
+      <div id="fsFallback">
+        <div class="hint">このブラウザはフォルダ保存に使えないので、ファイルの読み書きで代用します。</div>
+        <input type="file" id="fsPickFile" accept=".json" multiple hidden>
+        <div class="btn-row wrap">
+          <button type="button" id="fsDownloadBtn" class="btn primary">📤 年度ごとに書き出す</button>
+          <button type="button" id="fsPickBtn" class="btn">📥 年度ファイルを読み込む</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>⑤ このツールのバックアップ</h2>
+      <div class="hint">従業員マスタと有給の全記録をJSONで保存／復元します。ブラウザのデータを消す前に必ず取ってください。</div>
+      <input type="file" id="restoreFile" accept=".json" hidden>
+      <div class="btn-row wrap">
+        <button type="button" id="backupBtn" class="btn">💾 バックアップを保存</button>
+        <button type="button" id="restoreBtn" class="btn">📂 バックアップから復元</button>
+        <button type="button" id="wipeBtn" class="btn danger">全データ削除（最後の手段）</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>⑥ 有給データだけのJSON</h2>
+      <div class="hint">他のツールへ渡す用。付与・取得・残の計算結果を含めた形で書き出します。</div>
+      <div class="btn-row">
+        <button type="button" id="expLedgerBtn" class="btn">📤 有給データを書き出す</button>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+</main>
+
+<div id="toastArea"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+<script src="script.js?v=1.6.0"></script>
+</body>
+</html>
