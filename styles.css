@@ -498,3 +498,25 @@ table.grid td.has { background: var(--accent-soft); color: var(--accent); font-w
 /* 編集中の行 */
 #leaveTable tr.editing > td { background: var(--accent-soft); }
 #leaveTable tr.editing > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* ---- カードの折りたたみ ---- */
+
+h2.foldable { cursor: pointer; user-select: none; }
+h2.foldable::before {
+  content: '▾'; display: inline-block; width: 14px;
+  color: var(--text-sub); font-size: 12px; transition: transform .15s;
+}
+.card.collapsed h2.foldable::before { transform: rotate(-90deg); }
+.card.collapsed h2.foldable { margin-bottom: 0; }
+.card.collapsed > .card-body { display: none; }
+.card.collapsed { padding-bottom: 14px; }
+
+/* 方式のバッジ */
+.badge {
+  display: inline-block; margin-left: 6px; padding: 1px 7px;
+  border-radius: 5px; font-size: 10.5px; font-weight: 600; vertical-align: 1px;
+}
+.badge:empty { display: none; }
+.badge.part  { background: var(--accent-soft); color: var(--accent); }
+.badge.staff { background: #eafaef; color: #1c7c3c; }
+[data-theme="dark"] .badge.staff { background: #12331e; color: #4fd97a; }

@@ -902,14 +902,15 @@ function applyShiftDefault() {
   const hint = document.getElementById('shiftHint');
   if (!emp) { hint.textContent = ''; return; }
   const sh = emp.shift || {};
-  document.getElementById('inTypeHint').textContent = (emp.type || 'part') === 'staff'
-    ? '正職方式：年度ごとに時間で積み上げて集計します。'
-    : 'パート方式：管理簿の日数として数え、勤務時間帯を入れるとTC5へ出せます。';
-  hint.textContent = (emp.type || 'part') === 'staff'
-    ? `${emp.name} の1日の勤務時間：${emp.dailyHours}時間。時間帯を入れると時間数が自動で入ります。`
+  const staff = (emp.type || 'part') === 'staff';
+  const badge = document.getElementById('inEmpBadge');
+  badge.textContent = staff ? '正職方式' : 'パート方式';
+  badge.className = 'badge ' + (staff ? 'staff' : 'part');
+  hint.textContent = staff
+    ? `1日 ${emp.dailyHours}時間。時間帯を入れると時間数が自動で入ります。`
     : sh.in1
-      ? `${emp.name} の所定：${sh.in1}〜${sh.out1}${sh.in2 ? ` / ${sh.in2}〜${sh.out2}` : ''}（1日 ${emp.dailyHours}時間）`
-      : `${emp.name} は所定の勤務時間帯が未設定です。従業員マスタで登録すると自動で入ります。`;
+      ? `所定：${sh.in1}〜${sh.out1}${sh.in2 ? ` / ${sh.in2}〜${sh.out2}` : ''}（1日 ${emp.dailyHours}時間）`
+      : '所定の勤務時間帯が未設定です。従業員情報で登録すると自動で入ります。';
 
   if (inputType === 'full') {
     document.getElementById('inTime1a').value = sh.in1 || '';
@@ -2003,6 +2004,155 @@ function buildTc5Json(from, to, mode) {
   return { out, count, noTime, noName: [...noName] };
 }
 
+/* ===== TC5へ直接反映 =====
+ *
+ *  TC5と同じ場所（同じオリジン）に置いてあれば、ブラウザの保存領域が共通になるので
+ *  TC5の勤怠データにそのまま書き込める。ファイルの受け渡しが要らなくなる。
+ *  重複の判定はTC5の「統合」とまったく同じ条件にしてある。
+ */
+
+const TC5_KEYS = { normal: 'timeCards', swim: 'timeCards_swim' };
+const TC5_ROLLBACK = { normal: 'yk_tc5_undo_normal', swim: 'yk_tc5_undo_swim' };
+
+// いまどこから開いているか（オリジン）。同じオリジン同士なら保存領域を共有する
+function currentOrigin() {
+  if (typeof location === "undefined") return "（不明）";
+  return location.host ? location.protocol + "//" + location.host : "ローカルのファイル（file://）";
+}
+
+function tc5Read(mode) {
+  try {
+    const o = JSON.parse(localStorage.getItem(TC5_KEYS[mode]) || 'null');
+    return (o && typeof o === 'object' && !Array.isArray(o)) ? o : null;
+  } catch { return null; }
+}
+
+function tc5Count(data) {
+  let people = 0, records = 0;
+  for (const name in (data || {})) {
+    people++;
+    for (const d in data[name]) records += (data[name][d] || []).length;
+  }
+  return { people, records };
+}
+
+// TC5の mergeTimeCards と同じ重複判定
+function tc5Merge(existing, incoming) {
+  const merged = JSON.parse(JSON.stringify(existing || {}));
+  let added = 0;
+  for (const name in incoming) {
+    if (!merged[name]) merged[name] = {};
+    for (const date in incoming[name]) {
+      if (!merged[name][date]) merged[name][date] = [];
+      incoming[name][date].forEach(card => {
+        const dup = merged[name][date].some(c =>
+          c.checkIn === card.checkIn &&
+          (c.checkOut || null) === (card.checkOut || null) &&
+          !!c.isPaidLeave === !!card.isPaidLeave);
+        if (!dup) { merged[name][date].push(card); added++; }
+      });
+    }
+  }
+  return { merged, added };
+}
+
+// TC5のデータがこの画面から見えているか
+function tc5Status() {
+  const normal = tc5Read('normal');
+  const swim = tc5Read('swim');
+  return {
+    linked: normal !== null || swim !== null,
+    normal, swim,
+    n: tc5Count(normal), s: tc5Count(swim)
+  };
+}
+
+function renderTc5Direct() {
+  const box = document.getElementById('tc5DirectArea');
+  const st = tc5Status();
+  const mode = document.getElementById('expMode').value;
+  const from = document.getElementById('expFrom').value;
+  const to = document.getElementById('expTo').value;
+
+  if (!st.linked) {
+    box.innerHTML = `<div class="fs-status warn">
+        <b>TC5の勤怠データがこの画面からは見えません。</b><br>
+        ① まず<b>同じブラウザでTC5を一度開いて</b>から、この画面を再読み込みしてください。
+        それだけでつながることがあります（TC5を一度も開いていないと、まだデータが無いためです）。<br>
+        ② それでも出ないときは、TC5とこのツールが別の場所にあります。
+        同じフォルダに置くか、同じサイト（いまここは <code>${currentOrigin()}</code>）に
+        置けばつながります。<br>
+        ③ つながらないうちは、下の「JSONで書き出す」でこれまでどおり受け渡してください。
+      </div>`;
+    document.getElementById('tc5ApplyBtn').classList.add('hidden');
+    document.getElementById('tc5UndoBtn').classList.add('hidden');
+    return;
+  }
+
+  const { out, count } = (from && to) ? buildTc5Json(from, to, mode) : { out: {}, count: 0 };
+  const cur = tc5Read(mode) || {};
+  const { added } = tc5Merge(cur, out);
+  const curCount = tc5Count(cur);
+  const undo = localStorage.getItem(TC5_ROLLBACK[mode]);
+
+  let html = `<div class="fs-status ok">
+      TC5とつながっています。いまTC5に入っている勤怠：
+      通常 ${st.n.people}人/${st.n.records}件 ・ スイミング ${st.s.people}人/${st.s.records}件
+    </div>`;
+  if (from && to) {
+    html += `<div class="import-result">
+      <b>${TC5_MODES[mode]}</b>に反映すると
+      <b class="${added ? 'ok-text' : ''}">${added}件</b>が追加されます
+      （出力対象 ${count}件のうち、${count - added}件はTC5に既にある内容なので飛ばします）。<br>
+      反映後の${TC5_MODES[mode]}：${curCount.records}件 → <b>${curCount.records + added}件</b>
+    </div>`;
+  }
+  box.innerHTML = html;
+  document.getElementById('tc5ApplyBtn').classList.remove('hidden');
+  document.getElementById('tc5UndoBtn').classList.toggle('hidden', !undo);
+}
+
+function applyToTc5() {
+  const mode = document.getElementById('expMode').value;
+  const from = document.getElementById('expFrom').value;
+  const to = document.getElementById('expTo').value;
+  if (!from || !to) { showToast('期間を指定してください', 'warning'); return; }
+  if (!tc5Status().linked) { showToast('TC5の勤怠データが見えません', 'warning'); return; }
+
+  const { out, count } = buildTc5Json(from, to, mode);
+  if (!count) { showToast('この期間・区分に反映できる有給がありません', 'warning'); return; }
+
+  const before = localStorage.getItem(TC5_KEYS[mode]) || '{}';
+  const { merged, added } = tc5Merge(JSON.parse(before), out);
+  if (!added) { showToast('追加するものがありません（すべてTC5に入っています）', 'info'); return; }
+
+  const names = Object.keys(out);
+  if (!confirm(`TC5の【${TC5_MODES[mode]}】に ${added}件 を追加します。\n`
+    + `対象：${names.slice(0, 10).join('、')}${names.length > 10 ? ` ほか${names.length - 10}人` : ''}\n`
+    + `期間：${fmtDate(from)} 〜 ${fmtDate(to)}\n\n`
+    + '反映の直前の状態は控えておくので、おかしければ「直前の反映を取り消す」で戻せます。\nよろしいですか？')) return;
+
+  localStorage.setItem(TC5_ROLLBACK[mode], before);          // 巻き戻し用に1つ前を控える
+  localStorage.setItem(TC5_KEYS[mode], JSON.stringify(merged));
+  renderTc5Direct();
+  showToast(`TC5（${TC5_MODES[mode]}）に ${added}件 を反映しました。TC5を開き直すと出ます`, 'success');
+}
+
+function undoTc5Apply() {
+  const mode = document.getElementById('expMode').value;
+  const before = localStorage.getItem(TC5_ROLLBACK[mode]);
+  if (!before) { showToast('取り消せる反映がありません', 'warning'); return; }
+  const now = tc5Count(tc5Read(mode));
+  const back = tc5Count(JSON.parse(before));
+  if (!confirm(`TC5の【${TC5_MODES[mode]}】を、直前の反映の前に戻します。\n`
+    + `いま ${now.records}件 → 戻すと ${back.records}件\n\n`
+    + '反映のあとにTC5側で入力した内容も一緒に消えます。よろしいですか？')) return;
+  localStorage.setItem(TC5_KEYS[mode], before);
+  localStorage.removeItem(TC5_ROLLBACK[mode]);
+  renderTc5Direct();
+  showToast('直前の反映を取り消しました', 'success');
+}
+
 function renderExportPreview() {
   const from = document.getElementById('expFrom').value;
   const to   = document.getElementById('expTo').value;
@@ -2019,6 +2169,7 @@ function renderExportPreview() {
   if (noName.length) html += `<div class="danger-text">⚠ TC5での名前が未設定のため出力できない人：${noName.map(esc).join('、')}</div>`;
   if (noTime.length) html += `<div class="hint">⚠ 勤務時間帯が空で出力されない有給 ${noTime.length}件：${noTime.slice(0, 8).map(esc).join('、')}${noTime.length > 8 ? ' ほか' : ''}</div>`;
   box.innerHTML = html;
+  renderTc5Direct();
 }
 
 function exportTc5Json() {
@@ -2440,6 +2591,25 @@ function renderAll() {
   renderExportPreview();
 }
 
+/* カードの折りたたみ（開閉の状態は覚えておく） */
+function restoreFolds() {
+  let open = {};
+  try { open = JSON.parse(localStorage.getItem('yk_folds') || '{}') || {}; } catch {}
+  document.querySelectorAll('.card[data-fold]').forEach(card => {
+    const k = card.dataset.fold;
+    if (open[k] === true) card.classList.remove('collapsed');
+    if (open[k] === false) card.classList.add('collapsed');
+  });
+}
+
+function toggleFold(card) {
+  card.classList.toggle('collapsed');
+  let open = {};
+  try { open = JSON.parse(localStorage.getItem('yk_folds') || '{}') || {}; } catch {}
+  open[card.dataset.fold] = !card.classList.contains('collapsed');
+  localStorage.setItem('yk_folds', JSON.stringify(open));
+}
+
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   document.getElementById('themeToggle').textContent = theme === 'dark' ? '☀️' : '🌙';
@@ -2449,6 +2619,15 @@ function applyTheme(theme) {
 document.addEventListener('DOMContentLoaded', () => {
   DB = loadDB();
   applyTheme(localStorage.getItem('yk_theme') || 'light');
+
+  // カードの折りたたみ
+  restoreFolds();
+  document.addEventListener('click', e => {
+    const h2 = e.target.closest('h2.foldable');
+    if (!h2) return;
+    const card = h2.closest('.card[data-fold]');
+    if (card) toggleFold(card);
+  });
 
   // タブ
   document.getElementById('tabs').addEventListener('click', e => {
@@ -2753,6 +2932,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('expFrom').addEventListener('change', renderExportPreview);
   document.getElementById('expTo').addEventListener('change', renderExportPreview);
   document.getElementById('expMode').addEventListener('change', renderExportPreview);
+  document.getElementById('tc5ApplyBtn').addEventListener('click', applyToTc5);
+  document.getElementById('tc5UndoBtn').addEventListener('click', undoTc5Apply);
   document.getElementById('expBtn').addEventListener('click', exportTc5Json);
   document.getElementById('expLedgerBtn').addEventListener('click', exportLedgerJson);
 

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>年次有給休暇 管理ツール 1.0.0</title>
-<link rel="stylesheet" href="styles.css?v=1.7.0">
+<link rel="stylesheet" href="styles.css?v=1.9.1">
 </head>
 <body>
 
@@ -13,7 +13,7 @@
     <span class="brand-icon">🏖</span>
     <div>
       <h1>年次有給休暇 管理ツール</h1>
-      <div class="brand-sub">入力はここだけ。TC5へはJSONで受け渡し。<span class="ver">v1.7.0</span></div>
+      <div class="brand-sub">パートも正職も、入力はここだけ<span class="ver">v1.9.1</span></div>
     </div>
   </div>
   <div class="header-right">
@@ -40,7 +40,7 @@
       <h2>有給を登録</h2>
 
       <div class="field">
-        <label for="inEmp">従業員</label>
+        <label for="inEmp">従業員 <span class="badge" id="inEmpBadge"></span></label>
         <select id="inEmp"></select>
       </div>
 
@@ -48,7 +48,7 @@
         <label>取得日（カレンダーをクリックで複数選択）</label>
         <div id="paidCalendar" class="calendar"></div>
         <input type="text" id="inDates" placeholder="例: 2026-05-12, 2026-05-13" autocomplete="off">
-        <div class="hint">カレンダーで選ぶと自動で入ります。直接書いてもOK（カンマ区切り・YYYY-MM-DD）。</div>
+        <div class="hint">カレンダーで選ぶと入ります。直接書いてもOK。</div>
       </div>
 
       <div class="field" id="inTypeField">
@@ -67,8 +67,6 @@
         <div class="seg quick" id="hoursQuick"></div>
         <div class="hint" id="hoursHint"></div>
       </div>
-
-      <div class="hint" id="inTypeHint"></div>
 
       <div class="field" id="inShiftField">
         <label id="inShiftLabel">TC5に出す勤務時間帯</label>
@@ -190,9 +188,7 @@
   <div class="card hidden" id="dupCard">
     <h2>⚠ 同じ人が2つ以上登録されています</h2>
     <div class="hint">
-      取込のたびに氏名の書き方が変わると別人として登録されることがあります。<br>
-      <b>これにまとめる</b>＝その人に有給をぜんぶ移して、残りを削除します（氏名・入社日などの空欄は相手の値で埋まります）。<br>
-      <b>この行を削除</b>＝その人と、その人に付いている有給だけを消します。
+      <b>これにまとめる</b>＝有給をその人に寄せて残りを削除。<b>この行を削除</b>＝その人だけ消す。
     </div>
     <div id="dupArea"></div>
   </div>
@@ -250,12 +246,12 @@
       </div>
     </div>
 
-    <div class="card">
-      <h2>TC5の登録名</h2>
+    <div class="card collapsed" data-fold="emp-tcnames">
+      <h2 class="foldable">TC5の登録名 <span class="count">パートの名前をTC5に合わせる</span></h2>
+      <div class="card-body">
       <div class="hint">
-        TC5の勤怠一覧に出ている名前を、<b>TC5と同じ並び順</b>で1行ずつ書いてください。
-        ここに入れた名前が、上のフォームの「TC5での名前」の候補になり、一覧の並び順にも使われます。<br>
-        TC5の画面から名前をコピーして貼り付けてもOK（カンマ・読点区切りでも読み取ります）。
+        TC5の勤怠一覧に出ている名前を<b>TC5と同じ並び順</b>で1行ずつ。
+        下の「TC5の勤怠データから名前を読む」を使えば打ち間違いがありません。
       </div>
       <div class="field">
         <textarea id="tcNameText" rows="10" spellcheck="false"
@@ -269,10 +265,9 @@
         <button type="button" id="tcNameReset" class="btn">全部消す</button>
       </div>
       <div class="hint">
-        「TC5の勤怠データから名前を読む」は、TC5の<b>バックアップJSON</b>
-        （<code>勤怠バックアップ_通常_R8.5-6_20260611.json</code> など）を選ぶと、
-        中に入っている名前をそのまま登録名に取り込みます。打ち間違いが起きません。
-        通常とスイミングの両方を選べばまとめて読み込めます。
+        読むのはTC5の<b>バックアップJSON</b>（<code>勤怠バックアップ_通常_R8.5-6_20260611.json</code> など）。
+        通常とスイミングの両方を選べばまとめて読めます。
+      </div>
       </div>
     </div>
 
@@ -294,71 +289,105 @@
 
 <!-- ============ 取込・出力 ============ -->
 <section class="tab-panel" id="tab-io">
-  <div class="grid-2">
 
-    <div class="card">
-      <h2>①-1 パートの既存Excel（年次有給休暇管理簿）から取込</h2>
-      <div class="hint">
-        「見本★年次有給休暇.xlsx」と同じ体裁のファイルを選んでください。複数ファイル・複数シートまとめて可。<br>
-        読み取る場所：氏名 <code>C3</code>／ふりがな <code>C2</code>／入社日 <code>C5</code>／週労働日数 <code>C列</code>／取得日 <code>N〜AG列の上段</code>・日数 <code>下段</code>
-      </div>
-      <input type="file" id="xlsxFile" accept=".xlsx,.xls" multiple hidden>
-      <div class="btn-row">
-        <button type="button" id="xlsxBtn" class="btn primary">Excelを選ぶ</button>
-      </div>
-      <div id="importResult" class="import-result"></div>
-      <div class="hint">※ここで取り込むのは<b>パート方式</b>の管理簿です。</div>
-    </div>
-
-    <div class="card">
-      <h2>①-2 正職ツールのJSONから取込</h2>
-      <div class="hint">
-        今まで正職で使っていた有給管理ツールの書き出し（<code>有給管理_2026年度.json</code> など）を選んでください。
-        年度ごとのファイルをまとめて選べます。<br>
-        取り込むもの：スタッフ名・1日の勤務時間・有給の記録（時間）・長期休暇の最大日数と出勤数。
-      </div>
-      <input type="file" id="staffJsonFile" accept=".json" multiple hidden>
-      <div class="btn-row">
-        <button type="button" id="staffJsonBtn" class="btn primary">正職ツールのJSONを選ぶ</button>
-      </div>
-      <div id="staffImportResult" class="import-result"></div>
-    </div>
-
-    <div class="card">
-      <h2>② TC5へ渡すJSONを出力</h2>
-      <div class="field row">
-        <div><label for="expFrom">開始日</label><input type="date" id="expFrom"></div>
-        <div><label for="expTo">終了日</label><input type="date" id="expTo"></div>
-      </div>
-      <div class="btn-row wrap">
-        <button type="button" id="expPeriodPrev" class="btn small">前の締め期間</button>
-        <button type="button" id="expPeriodCur" class="btn small">今の締め期間</button>
-        <button type="button" id="expPeriodNext" class="btn small">次の締め期間</button>
-      </div>
-      <div class="field">
-        <label for="expMode">出力する区分</label>
+  <div class="card">
+    <h2>📤 TC5へ反映</h2>
+    <div class="field row">
+      <div><label for="expFrom">開始日</label><input type="date" id="expFrom"></div>
+      <div><label for="expTo">終了日</label><input type="date" id="expTo"></div>
+      <div><label for="expMode">区分</label>
         <select id="expMode">
-          <option value="normal">通常だけ</option>
-          <option value="swim">スイミングだけ</option>
-        </select>
-        <div class="hint">TC5は通常とスイミングで保存領域が別なので、区分ごとに出力してそれぞれ取り込みます。<br>
-          <b>パート方式の人だけ</b>が出力されます（正職はTC5を使わないため対象外）。</div>
-      </div>
-      <div id="expPreview" class="import-result"></div>
-      <div class="btn-row">
-        <button type="button" id="expBtn" class="btn primary">JSONを書き出す</button>
-      </div>
-      <div class="hint">
-        <b>TC5での取り込み方</b>：TC5を開く → 出力した区分に切り替える → 「リストア」で このJSONを選ぶ → <b>統合</b> を押す。<br>
-        同じJSONを2回取り込んでも重複は自動で除外されます。
-      </div>
+          <option value="normal">通常</option>
+          <option value="swim">スイミング</option>
+        </select></div>
+    </div>
+    <div class="btn-row wrap">
+      <button type="button" id="expPeriodPrev" class="btn small">前の締め期間</button>
+      <button type="button" id="expPeriodCur" class="btn small">今の締め期間</button>
+      <button type="button" id="expPeriodNext" class="btn small">次の締め期間</button>
     </div>
 
-    <div class="card">
-      <h2>③ 有給の記録を選んで削除</h2>
-      <div class="hint">
-        取込をやり直したいときに使います。<b>従業員そのものは消えません</b>。<br>
-        1件ずつ消すなら「✍️ 有給入力」タブの一覧から、人ごと消すなら「👤 従業員マスタ」の一覧から消せます。
+    <div id="expPreview" class="import-result"></div>
+    <div id="tc5DirectArea"></div>
+
+    <div class="btn-row wrap">
+      <button type="button" id="tc5ApplyBtn" class="btn primary hidden">📤 TC5に直接反映</button>
+      <button type="button" id="tc5UndoBtn" class="btn danger hidden">↩ 直前の反映を取り消す</button>
+      <button type="button" id="expBtn" class="btn">JSONで書き出す</button>
+    </div>
+    <div class="hint">
+      出るのは<b>パート方式の人だけ</b>。区分ごとに反映します。重複は自動で飛ばすので何度押しても安全です。<br>
+      JSONで書き出したときは、TC5で「リストア」→「統合」。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>💾 保存とバックアップ</h2>
+    <div id="fsStatus" class="fs-status"></div>
+    <div id="fsSupported">
+      <div class="btn-row wrap">
+        <button type="button" id="fsLinkBtn" class="btn primary">📁 フォルダを選ぶ</button>
+        <button type="button" id="fsLoadBtn" class="btn">📂 フォルダから読み込む</button>
+        <button type="button" id="fsSaveBtn" class="btn">💾 今すぐ保存</button>
+      </div>
+    </div>
+    <div id="fsFallback">
+      <input type="file" id="fsPickFile" accept=".json" multiple hidden>
+      <div class="btn-row wrap">
+        <button type="button" id="fsDownloadBtn" class="btn primary">📤 年度ごとに書き出す</button>
+        <button type="button" id="fsPickBtn" class="btn">📥 年度ファイルを読み込む</button>
+      </div>
+    </div>
+    <input type="file" id="restoreFile" accept=".json" hidden>
+    <div class="btn-row wrap">
+      <button type="button" id="backupBtn" class="btn">💾 まるごとバックアップ</button>
+      <button type="button" id="restoreBtn" class="btn">📂 バックアップから復元</button>
+    </div>
+    <div class="hint">
+      フォルダを決めておくと、変更のたびに年度ごとのファイル（<code>有給管理データ_2026年度.json</code>）へ
+      自動保存します（<b>Ctrl+S</b> でも保存）。正職ツールのファイルとは別の名前なので上書きしません。
+    </div>
+  </div>
+
+  <div class="card collapsed" data-fold="io-import">
+    <h2 class="foldable">📥 最初の取込 <span class="count">今までのデータを持ってくる</span></h2>
+    <div class="card-body">
+      <div class="grid-2">
+
+        <div>
+          <div class="field">
+            <label>パートの Excel（年次有給休暇管理簿）</label>
+            <div class="hint">見本と同じ体裁のファイル。複数ファイル・複数シートまとめて選べます。</div>
+          </div>
+          <input type="file" id="xlsxFile" accept=".xlsx,.xls" multiple hidden>
+          <div class="btn-row">
+            <button type="button" id="xlsxBtn" class="btn primary">Excelを選ぶ</button>
+          </div>
+          <div id="importResult" class="import-result"></div>
+        </div>
+
+        <div>
+          <div class="field">
+            <label>正職ツールの JSON</label>
+            <div class="hint"><code>有給管理_2026年度.json</code> など。年度ぶんまとめて選べます。</div>
+          </div>
+          <input type="file" id="staffJsonFile" accept=".json" multiple hidden>
+          <div class="btn-row">
+            <button type="button" id="staffJsonBtn" class="btn primary">正職ツールのJSONを選ぶ</button>
+          </div>
+          <div id="staffImportResult" class="import-result"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="card collapsed" data-fold="io-clean">
+    <h2 class="foldable">🧹 データの整理 <span class="count">取込のやり直し・書き出し</span></h2>
+    <div class="card-body">
+      <div class="field">
+        <label>有給の記録を選んで削除</label>
+        <div class="hint">取込をやり直したいとき用。<b>従業員そのものは消えません</b>。</div>
       </div>
       <div class="field row">
         <div><label for="purgeSource">取込元</label>
@@ -376,59 +405,14 @@
         <div><label for="purgeTo">この日まで（任意）</label><input type="date" id="purgeTo"></div>
       </div>
       <div id="purgePreview" class="import-result"></div>
-      <div class="btn-row">
-        <button type="button" id="purgeBtn" class="btn danger">条件に合う有給を削除</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>④ 年度ごとのファイルに保存（おすすめ）</h2>
-      <div id="fsStatus" class="fs-status"></div>
-      <div class="hint">
-        フォルダを1つ決めておくと、<b>変更するたびに年度ごとのファイルへ自動保存</b>します。
-        パソコンを変えても、そのフォルダを選べば続きから使えます（<b>Ctrl+S</b> でも保存）。<br>
-        ファイル名は <code>有給管理データ_2026年度.json</code>。1つのファイルに
-        「従業員マスタ全部＋その年度の有給＋その年度の設定」が入るので、どの年度からでも復元できます。<br>
-        ⚠ 今までの正職ツールの <code>有給管理_2026年度.json</code> とは<b>別の名前</b>です。
-        同じフォルダに置いても上書きしません。
-      </div>
-      <div id="fsSupported">
-        <div class="btn-row wrap">
-          <button type="button" id="fsLinkBtn" class="btn primary">📁 フォルダを選ぶ</button>
-          <button type="button" id="fsLoadBtn" class="btn">📂 フォルダから読み込む</button>
-          <button type="button" id="fsSaveBtn" class="btn">💾 今すぐ保存</button>
-        </div>
-      </div>
-      <div id="fsFallback">
-        <div class="hint">このブラウザはフォルダ保存に使えないので、ファイルの読み書きで代用します。</div>
-        <input type="file" id="fsPickFile" accept=".json" multiple hidden>
-        <div class="btn-row wrap">
-          <button type="button" id="fsDownloadBtn" class="btn primary">📤 年度ごとに書き出す</button>
-          <button type="button" id="fsPickBtn" class="btn">📥 年度ファイルを読み込む</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>⑤ このツールのバックアップ</h2>
-      <div class="hint">従業員マスタと有給の全記録をJSONで保存／復元します。ブラウザのデータを消す前に必ず取ってください。</div>
-      <input type="file" id="restoreFile" accept=".json" hidden>
       <div class="btn-row wrap">
-        <button type="button" id="backupBtn" class="btn">💾 バックアップを保存</button>
-        <button type="button" id="restoreBtn" class="btn">📂 バックアップから復元</button>
-        <button type="button" id="wipeBtn" class="btn danger">全データ削除（最後の手段）</button>
+        <button type="button" id="purgeBtn" class="btn danger">条件に合う有給を削除</button>
+        <button type="button" id="expLedgerBtn" class="btn">📤 有給データをJSONで書き出す</button>
+        <button type="button" id="wipeBtn" class="btn danger">全データ削除</button>
       </div>
     </div>
-
-    <div class="card">
-      <h2>⑥ 有給データだけのJSON</h2>
-      <div class="hint">他のツールへ渡す用。付与・取得・残の計算結果を含めた形で書き出します。</div>
-      <div class="btn-row">
-        <button type="button" id="expLedgerBtn" class="btn">📤 有給データを書き出す</button>
-      </div>
-    </div>
-
   </div>
+
 </section>
 
 </main>
@@ -436,6 +420,6 @@
 <div id="toastArea"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
-<script src="script.js?v=1.7.0"></script>
+<script src="script.js?v=1.9.1"></script>
 </body>
 </html>
