@@ -520,3 +520,104 @@ h2.foldable::before {
 .badge.part  { background: var(--accent-soft); color: var(--accent); }
 .badge.staff { background: #eafaef; color: #1c7c3c; }
 [data-theme="dark"] .badge.staff { background: #12331e; color: #4fd97a; }
+
+/* 従業員一覧は全幅で使うので、狭い列は詰める */
+#empTable td, #empTable th { vertical-align: middle; }
+#empTable td:nth-child(2) { min-width: 140px; white-space: normal; }
+#empTable .hint { margin-top: 1px; }
+
+/* ---- カードの見出し行（左に見出し・右に操作） ---- */
+
+.card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.card-head h2 { margin: 0; }
+
+/* ---- 操作しやすさ ---- */
+
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+.btn:active { transform: translateY(1px); }
+.btn.primary:active { filter: brightness(.95); }
+
+/* 開いた入力フォームは、どこが編集中か分かるように縁を立てる */
+#empFormCard { border-color: var(--accent); box-shadow: 0 2px 10px rgba(10, 132, 255, .12); }
+[data-theme="dark"] #empFormCard { box-shadow: none; }
+
+/* 空のときの案内は読みやすく */
+.empty-row td { line-height: 1.9; }
+
+/* ---- 長期休暇の設定表 ---- */
+
+table.term-table td, table.term-table th { text-align: left; }
+table.term-table td.num, table.term-table th.num { text-align: right; }
+table.term-table input[type=number] { width: 70px; text-align: right; }
+table.term-table input[type=date] { width: 150px; }
+table.term-table td span { margin: 0 4px; color: var(--text-sub); }
+
+/* 有給入力タブに出す期間 */
+.term-period { font-size: 11px; color: var(--text-sub); margin-bottom: 4px; }
+
+/* 月別表：長期休暇の期間の日 */
+table.grid td.term { background: #fff6e0; }
+table.grid td.term.has { background: var(--accent-soft); box-shadow: inset 0 -3px 0 #f0b429; }
+[data-theme="dark"] table.grid td.term { background: #33290f; }
+.term-legend { color: #f0b429; }
+@media print {
+  table.grid td.term { background: #f5f5f5; }
+  table.grid td.term.has { background: #eaeaea; box-shadow: none; }
+}
+
+/* 所定と1日の勤務時間の食い違いを直すボタン */
+#empShiftHint .btn.mini { margin-left: 8px; }
+.seg.quick .hint { padding: 4px 0; }
+
+/* 時間帯の計算結果 */
+.calc {
+  margin: 6px 0 2px; font-size: 13px; color: var(--text-sub);
+}
+.calc:empty { display: none; }
+.calc b { font-size: 18px; color: var(--accent); }
+
+/* ---- 時間帯からの自動計算を目立たせる ---- */
+
+.calc {
+  display: flex; align-items: baseline; gap: 10px;
+  margin: 10px 0 4px; padding: 10px 14px;
+  border-radius: 10px; background: var(--accent-soft);
+  border: 1px solid transparent;
+}
+.calc:empty { display: none; }
+.calc::before {
+  content: '＝'; color: var(--accent); font-weight: 700; font-size: 15px;
+}
+.calc .calc-main { font-size: 24px; font-weight: 700; color: var(--accent); line-height: 1.2; }
+.calc .calc-sub { font-size: 12.5px; color: var(--text-sub); }
+.calc.waiting { background: var(--bg); border-color: var(--border); }
+.calc.waiting::before { color: var(--text-sub); }
+.calc.waiting .calc-main { color: var(--text-sub); font-weight: 400; }
+
+/* 時間数の直接入力（ふだんは畳んでおく） */
+.link-btn {
+  border: none; background: none; padding: 0; cursor: pointer;
+  color: var(--accent); font-size: 12px; font-family: inherit;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+#hoursBox { margin-top: 8px; }
+
+/* 一覧の「内容」列：バッジのうしろに日数を添える */
+#leaveTable .qty { font-size: 12.5px; color: var(--text-sub); margin-left: 4px; }
+
+/* タブの上に置く細い操作帯（カードにするほどでもないもの） */
+.tab-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 16px; margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+.tab-toolbar label { font-size: 12px; color: var(--text-sub); }
+.tab-toolbar select { width: auto; min-width: 180px; }
+.tab-toolbar .spacer { flex: 1; }
+.grid-nav select { min-width: 130px; }

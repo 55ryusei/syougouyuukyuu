@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>年次有給休暇 管理ツール 1.0.0</title>
-<link rel="stylesheet" href="styles.css?v=1.9.1">
+<link rel="stylesheet" href="styles.css?v=2.7.1">
 </head>
 <body>
 
@@ -13,7 +13,7 @@
     <span class="brand-icon">🏖</span>
     <div>
       <h1>年次有給休暇 管理ツール</h1>
-      <div class="brand-sub">パートも正職も、入力はここだけ<span class="ver">v1.9.1</span></div>
+      <div class="brand-sub">パートも正職も、入力はここだけ<span class="ver">v2.7.1</span></div>
     </div>
   </div>
   <div class="header-right">
@@ -55,17 +55,8 @@
         <label>取得の単位</label>
         <div id="inType" class="seg">
           <button type="button" data-type="full" class="active">全日</button>
-          <button type="button" data-type="am">午前半休</button>
-          <button type="button" data-type="pm">午後半休</button>
-          <button type="button" data-type="hours">時間単位</button>
+          <button type="button" data-type="am">半休</button>
         </div>
-      </div>
-
-      <div class="field hidden" id="hoursField">
-        <label for="inHours" id="hoursLabel">有給として取得した時間</label>
-        <input type="text" id="inHours" placeholder="例: 2:30" autocomplete="off" inputmode="text">
-        <div class="seg quick" id="hoursQuick"></div>
-        <div class="hint" id="hoursHint"></div>
       </div>
 
       <div class="field" id="inShiftField">
@@ -73,11 +64,22 @@
         <div class="time-row">
           <input type="time" id="inTime1a"><span>〜</span><input type="time" id="inTime1b">
         </div>
-        <div class="time-row">
+        <div class="time-row" id="inTimeRow2">
           <input type="time" id="inTime2a"><span>〜</span><input type="time" id="inTime2b">
           <span class="hint inline">②は中抜けの人だけ</span>
         </div>
+        <div class="seg quick" id="shiftQuick"></div>
+        <div class="calc" id="shiftCalc"></div>
         <div class="hint" id="shiftHint"></div>
+      </div>
+
+      <div class="field hidden" id="hoursField">
+        <button type="button" class="link-btn" id="hoursToggle">時間数を直接入力する</button>
+        <div class="hidden" id="hoursBox">
+          <label for="inHours" id="hoursLabel">時間数</label>
+          <input type="text" id="inHours" placeholder="例: 2:30" autocomplete="off" inputmode="text">
+          <div class="hint" id="hoursHint"></div>
+        </div>
       </div>
 
       <div class="field">
@@ -104,6 +106,12 @@
       <div class="field row">
         <input type="search" id="leaveSearch" placeholder="名前で絞り込み">
         <select id="leaveMonth"></select>
+        <select id="leaveSort">
+          <option value="date_desc">日付が新しい順</option>
+          <option value="date_asc">日付が古い順</option>
+          <option value="seq_desc">入力した順（新しい順）</option>
+          <option value="seq_asc">入力した順（古い順）</option>
+        </select>
       </div>
       <div class="list-tools">
         <label class="chk-all"><input type="checkbox" id="leaveCheckAll"> 全部選ぶ</label>
@@ -112,7 +120,7 @@
       </div>
       <div class="table-wrap tall">
         <table id="leaveTable">
-          <thead><tr><th class="chk"></th><th>日付</th><th>氏名</th><th>単位</th><th>日数</th><th>時間帯</th><th></th></tr></thead>
+          <thead><tr><th class="chk"></th><th>日付</th><th>氏名</th><th>内容</th><th>時間帯</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -121,8 +129,22 @@
   </div>
 </section>
 
-<!-- ============ パート（残日数一覧＋管理簿） ============ -->
+<!-- ============ パート（管理簿＋残日数一覧） ============ -->
 <section class="tab-panel" id="tab-part">
+
+  <div class="card">
+    <div class="book-toolbar">
+      <div class="field" style="margin:0;flex:1;min-width:220px">
+        <label for="bookEmp">従業員</label>
+        <select id="bookEmp"></select>
+      </div>
+      <button type="button" id="bookPrintBtn" class="btn">🖨 印刷</button>
+      <button type="button" id="bookXlsxOne" class="btn">📗 この人をExcel</button>
+      <button type="button" id="bookXlsxAll" class="btn primary">📗 全員をExcel</button>
+    </div>
+    <div id="bookArea"></div>
+  </div>
+
   <div class="card">
     <h2>全員の残日数（本日時点）</h2>
     <div class="hint">「義務5日」＝ 付与から1年以内に取らせる5日のうち、あと何日残っているか（時間単位年休は含みません）。</div>
@@ -137,35 +159,24 @@
       </table>
     </div>
   </div>
-
-  <div class="card">
-    <div class="book-toolbar">
-      <div class="field" style="margin:0;flex:1;min-width:220px">
-        <label for="bookEmp">従業員</label>
-        <select id="bookEmp"></select>
-      </div>
-      <button type="button" id="bookPrintBtn" class="btn">🖨 印刷</button>
-      <button type="button" id="bookXlsxOne" class="btn">📗 この人をExcel</button>
-      <button type="button" id="bookXlsxAll" class="btn primary">📗 全員をExcel</button>
-    </div>
-    <div id="bookArea"></div>
-  </div>
 </section>
 
 <!-- ============ 正職（長期休暇の入力＋集計） ============ -->
 <section class="tab-panel" id="tab-staff">
 
-  <div class="card">
-    <div class="book-toolbar">
-      <div class="field" style="margin:0;flex:1;min-width:220px">
-        <label for="staffYear">年度</label>
-        <select id="staffYear"></select>
-      </div>
-      <button type="button" id="staffPrintBtn" class="btn">🖨 印刷</button>
-      <button type="button" id="staffCsvBtn" class="btn primary">📄 CSVで出力</button>
+  <div class="tab-toolbar">
+    <label for="staffYear">年度</label>
+    <select id="staffYear"></select>
+    <span class="spacer"></span>
+    <button type="button" id="staffPrintBtn" class="btn">🖨 印刷</button>
+    <button type="button" id="staffCsvBtn" class="btn primary">📄 CSVで出力</button>
+  </div>
+
+  <div class="card collapsed" data-fold="staff-terms">
+    <h2 class="foldable">🏖 長期休暇の設定 <span class="count">最大日数と期間</span></h2>
+    <div class="card-body">
+      <div id="termArea"></div>
     </div>
-    <h2>🏖 長期休暇の設定（夏期・冬期・春期）</h2>
-    <div id="termArea"></div>
   </div>
 
   <div class="card">
@@ -182,7 +193,7 @@
   </div>
 </section>
 
-<!-- ============ 従業員マスタ ============ -->
+<!-- ============ 従業員情報 ============ -->
 <section class="tab-panel" id="tab-emp">
 
   <div class="card hidden" id="dupCard">
@@ -193,96 +204,100 @@
     <div id="dupArea"></div>
   </div>
 
-  <div class="grid-2">
-    <div class="card">
-      <h2 id="empFormTitle">従業員を追加</h2>
-      <input type="hidden" id="empId">
-      <div class="field"><label for="empName">氏名（管理簿の表記）</label><input type="text" id="empName" placeholder="山田　花子"></div>
-      <div class="field"><label for="empKana">ふりがな</label><input type="text" id="empKana" placeholder="やまだ　はなこ"></div>
-      <div class="field" id="empTcField">
-        <label for="empTcName">TC5での名前 <span class="req">必須</span></label>
-        <input type="text" id="empTcName" list="tcNameList" placeholder="TC5に出ている名前">
-        <datalist id="tcNameList"></datalist>
-        <div class="hint">TC5の勤怠一覧に出ている名前と<b>1文字違わず</b>同じにしてください。ここがJSONのキーになります。</div>
-      </div>
-      <div class="field">
-        <label for="empType">管理方式 <span class="req">重要</span></label>
-        <select id="empType">
-          <option value="part">パート方式（見本Excelの管理簿）</option>
-          <option value="staff">正職方式（年度・時間で集計）</option>
-        </select>
-        <div class="hint" id="empTypeHint"></div>
-      </div>
+  <div class="card hidden" id="empFormCard">
+    <h2 id="empFormTitle">従業員を追加</h2>
+    <input type="hidden" id="empId">
+    <div class="field row">
+      <div><label for="empName">氏名（管理簿の表記）</label><input type="text" id="empName" placeholder="山田　花子"></div>
+      <div><label for="empKana">ふりがな</label><input type="text" id="empKana" placeholder="やまだ　はなこ"></div>
+    </div>
+    <div class="field" id="empTcField">
+      <label for="empTcName">TC5での名前 <span class="req">必須</span></label>
+      <input type="text" id="empTcName" list="tcNameList" placeholder="TC5に出ている名前">
+      <datalist id="tcNameList"></datalist>
+      <div class="hint">TC5の勤怠一覧に出ている名前と<b>1文字違わず</b>同じにしてください。ここがJSONのキーになります。</div>
+    </div>
+    <div class="field">
+      <label for="empType">管理方式 <span class="req">重要</span></label>
+      <select id="empType">
+        <option value="part">パート方式（見本Excelの管理簿）</option>
+        <option value="staff">正職方式（年度・時間で集計）</option>
+      </select>
+      <div class="hint" id="empTypeHint"></div>
+    </div>
+    <div class="field row">
+      <div><label for="empMode">区分</label>
+        <select id="empMode"><option value="normal">通常</option><option value="swim">スイミング</option></select></div>
+      <div><label for="empDailyHours" id="empDailyLabel">1日の勤務時間</label>
+        <input type="number" id="empDailyHours" step="0.25" min="1" value="8"></div>
+    </div>
+    <div id="empPartFields">
       <div class="field row">
-        <div><label for="empMode">区分</label>
-          <select id="empMode"><option value="normal">通常</option><option value="swim">スイミング</option></select></div>
-        <div><label for="empDailyHours">1日の勤務時間</label>
-          <input type="number" id="empDailyHours" step="0.25" min="1" value="8"></div>
-      </div>
-      <div id="empPartFields">
-        <div class="field row">
-          <div><label for="empHire">入社日</label><input type="date" id="empHire"></div>
-          <div><label for="empWeekDays">週の所定労働日数（既定）</label>
-            <select id="empWeekDays">
-              <option value="5">5日以上（通常の付与）</option>
-              <option value="4">4日</option><option value="3">3日</option>
-              <option value="2">2日</option><option value="1">1日</option>
-            </select></div>
-        </div>
-      </div>
-      <div class="field" id="empShiftField">
-        <label>所定の勤務時間帯（全日有給のときTC5へ出す時間）</label>
-        <div class="time-row"><input type="time" id="empT1a"><span>〜</span><input type="time" id="empT1b"></div>
-        <div class="time-row"><input type="time" id="empT2a"><span>〜</span><input type="time" id="empT2b">
-          <span class="hint inline">②は中抜けの人だけ</span></div>
-      </div>
-      <div class="field">
-        <label><input type="checkbox" id="empActive" checked> 在籍中</label>
-      </div>
-      <div class="btn-row">
-        <button type="button" id="empSave" class="btn primary">保存</button>
-        <button type="button" id="empCancel" class="btn hidden">キャンセル</button>
-        <button type="button" id="empDelete" class="btn danger hidden">削除</button>
+        <div><label for="empHire">入社日</label><input type="date" id="empHire"></div>
+        <div><label for="empWeekDays">週の所定労働日数（既定）</label>
+          <select id="empWeekDays">
+            <option value="5">5日以上（通常の付与）</option>
+            <option value="4">4日</option><option value="3">3日</option>
+            <option value="2">2日</option><option value="1">1日</option>
+          </select></div>
       </div>
     </div>
-
-    <div class="card collapsed" data-fold="emp-tcnames">
-      <h2 class="foldable">TC5の登録名 <span class="count">パートの名前をTC5に合わせる</span></h2>
-      <div class="card-body">
-      <div class="hint">
-        TC5の勤怠一覧に出ている名前を<b>TC5と同じ並び順</b>で1行ずつ。
-        下の「TC5の勤怠データから名前を読む」を使えば打ち間違いがありません。
-      </div>
-      <div class="field">
-        <textarea id="tcNameText" rows="10" spellcheck="false"
-                  placeholder="TC5の勤怠一覧に出ている名前を、TC5と同じ並び順で1行ずつ"></textarea>
-      </div>
-      <div id="tcNameArea"></div>
-      <input type="file" id="tcNameJsonFile" accept=".json" multiple hidden>
-      <div class="btn-row wrap">
-        <button type="button" id="tcNameSave" class="btn primary">保存</button>
-        <button type="button" id="tcNameJsonBtn" class="btn">📥 TC5の勤怠データから名前を読む</button>
-        <button type="button" id="tcNameReset" class="btn">全部消す</button>
-      </div>
-      <div class="hint">
-        読むのはTC5の<b>バックアップJSON</b>（<code>勤怠バックアップ_通常_R8.5-6_20260611.json</code> など）。
-        通常とスイミングの両方を選べばまとめて読めます。
-      </div>
-      </div>
+    <div class="field" id="empShiftField">
+      <label id="empShiftLabel">所定の勤務時間帯</label>
+      <div class="time-row"><input type="time" id="empT1a"><span>〜</span><input type="time" id="empT1b"></div>
+      <div class="time-row" id="empTimeRow2"><input type="time" id="empT2a"><span>〜</span><input type="time" id="empT2b">
+        <span class="hint inline">②は中抜けの人だけ</span></div>
+      <div class="hint" id="empShiftHint"></div>
     </div>
+    <div class="field">
+      <label><input type="checkbox" id="empActive" checked> 在籍中</label>
+    </div>
+    <div class="btn-row">
+      <button type="button" id="empSave" class="btn primary">保存</button>
+      <button type="button" id="empCancel" class="btn hidden">キャンセル</button>
+      <button type="button" id="empDelete" class="btn danger hidden">削除</button>
+    </div>
+  </div>
 
-    <div class="card">
+  <div class="card">
+    <div class="card-head">
       <h2>従業員一覧 <span class="count" id="empCount"></span></h2>
-      <div class="list-tools">
-        <label class="chk-all"><input type="checkbox" id="empCheckAll"> 全部選ぶ</label>
-        <button type="button" id="empDeleteChecked" class="btn danger small">チェックした人を削除</button>
-      </div>
-      <div class="table-wrap tall">
-        <table id="empTable">
-          <thead><tr><th class="chk"></th><th>氏名</th><th>TC5表記</th><th>方式</th><th>区分</th><th>条件</th><th>勤務時間帯</th><th></th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
+      <button type="button" id="empAddBtn" class="btn primary">＋ 従業員を追加</button>
+    </div>
+    <div class="list-tools">
+      <label class="chk-all"><input type="checkbox" id="empCheckAll"> 全部選ぶ</label>
+      <button type="button" id="empDeleteChecked" class="btn danger small">チェックした人を削除</button>
+    </div>
+    <div class="table-wrap tall">
+      <table id="empTable">
+        <thead><tr><th class="chk"></th><th>氏名</th><th>TC5での名前</th><th>方式・区分</th><th>条件</th><th>勤務時間帯</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card collapsed" data-fold="emp-tcnames">
+    <h2 class="foldable">TC5の登録名 <span class="count">パートの名前をTC5に合わせる</span></h2>
+    <div class="card-body">
+    <div class="hint">
+      TC5の勤怠一覧に出ている名前を<b>TC5と同じ並び順</b>で1行ずつ。
+      下の「TC5の勤怠データから名前を読む」を使えば打ち間違いがありません。
+    </div>
+    <div class="field">
+      <textarea id="tcNameText" rows="10" spellcheck="false"
+                placeholder="TC5の勤怠一覧に出ている名前を、TC5と同じ並び順で1行ずつ"></textarea>
+    </div>
+    <div id="tcNameArea"></div>
+    <input type="file" id="tcNameJsonFile" accept=".json" multiple hidden>
+    <div class="btn-row wrap">
+      <button type="button" id="tcNameSave" class="btn primary">保存</button>
+      <button type="button" id="tcNameJsonBtn" class="btn">📥 TC5の勤怠データから名前を読む</button>
+      <button type="button" id="tcNameReset" class="btn">全部消す</button>
+    </div>
+    <div class="hint">
+      読むのはTC5の<b>バックアップJSON</b>（<code>勤怠バックアップ_通常_R8.5-6_20260611.json</code> など）。
+      通常とスイミングの両方を選べばまとめて読めます。
+    </div>
     </div>
   </div>
 </section>
@@ -420,6 +435,6 @@
 <div id="toastArea"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
-<script src="script.js?v=1.9.1"></script>
+<script src="script.js?v=2.7.1"></script>
 </body>
 </html>
