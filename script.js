@@ -229,6 +229,79 @@ function getTermWork(year, empId) {
   return w[empId];
 }
 
+// 「7/21」「7-21」「721」「0721」→ { m, d }。読めなければ null
+function parseMD(str) {
+  const t = String(str || '').trim();
+  if (!t) return null;
+  const parts = t.split(/[^0-9]+/).filter(Boolean);
+  let m, d;
+  if (parts.length >= 2) { m = +parts[0]; d = +parts[1]; }
+  else if (parts.length === 1) {
+    const v = parts[0];
+    if (v.length === 3) { m = +v.slice(0, 1); d = +v.slice(1); }        // 721 → 7/21
+    else if (v.length === 4) { m = +v.slice(0, 2); d = +v.slice(2); }   // 1225 → 12/25
+    else return null;
+  } else return null;
+  if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null;
+  if (d > new Date(2024, m, 0).getDate()) return null;                   // うるう年ぶんまで許す
+  return { m, d };
+}
+
+// 年度のどの年に属する月か（4〜12月はその年、1〜3月は翌年）
+function yearOfFiscalMonth(year, m) { return m >= 4 ? year : year + 1; }
+
+// 月日 → その年度の実際の日付
+function mdToDate(year, str) {
+  const md = parseMD(str);
+  if (!md) return null;
+  const y = yearOfFiscalMonth(year, md.m);
+  const last = new Date(y, md.m, 0).getDate();
+  if (md.d > last) return null;                                          // 例：うるう年でない2/29
+  return `${y}-${pad2(md.m)}-${pad2(md.d)}`;
+}
+
+// 日付 → 「7/21」表示
+function dateToMD(dateStr) {
+  if (!dateStr) return '';
+  const [, m, d] = dateStr.split('-').map(Number);
+  return `${m}/${d}`;
+}
+
+// 日付の年だけをずらす。2月29日が無い年になったら28日にする
+function shiftYear(dateStr, delta) {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const ny = y + delta;
+  const last = new Date(ny, m, 0).getDate();
+  return `${ny}-${pad2(m)}-${pad2(Math.min(d, last))}`;
+}
+
+// 前の年度の設定を、日付を1年ずらして今の年度に入れる
+function copyTermsFromPrevYear(year) {
+  const prev = DB.fiscal && DB.fiscal[String(year - 1)];
+  if (!prev) return 0;
+  const cur = getFiscal(year);
+  cur.maxLeave = { ...cur.maxLeave, ...(prev.maxLeave || {}) };
+  let n = 0;
+  for (const t of TERM_FIELDS) {
+    const p = (prev.terms || {})[t.max];
+    if (!p || (!p.from && !p.to)) continue;
+    cur.terms[t.max] = { from: shiftYear(p.from, 1), to: shiftYear(p.to, 1) };
+    n++;
+  }
+  return n;
+}
+
+// 前の年度に設定があるか
+function hasPrevTerms(year) {
+  const prev = DB.fiscal && DB.fiscal[String(year - 1)];
+  if (!prev) return false;
+  return TERM_FIELDS.some(t => {
+    const p = (prev.terms || {})[t.max];
+    return p && (p.from || p.to);
+  });
+}
+
 // その年度・その休みの期間
 function getTermPeriod(year, key) {
   return getFiscal(year).terms[key] || { from: '', to: '' };
@@ -1732,26 +1805,38 @@ function renderTermInput() {
     return `<tr>
       <td><b>${t.label}</b></td>
       <td class="num"><input type="number" class="mx" data-max="${t.max}" step="0.5" min="0" value="${f.maxLeave[t.max]}"> 日</td>
-      <td>
-        <input type="date" class="tp" data-term="${t.max}" data-side="from" value="${p.from}">
+      <td class="md-cell">
+        <input type="text" class="tp" data-term="${t.max}" data-side="from"
+               value="${dateToMD(p.from)}" placeholder="7/21" inputmode="numeric">
         <span>〜</span>
-        <input type="date" class="tp" data-term="${t.max}" data-side="to" value="${p.to}">
+        <input type="text" class="tp" data-term="${t.max}" data-side="to"
+               value="${dateToMD(p.to)}" placeholder="8/20" inputmode="numeric">
+        ${p.from || p.to ? `<div class="hint">${fmtDate(p.from)}〜${fmtDate(p.to)}</div>` : ''}
       </td>
       <td class="num">${bad ? '<span class="danger-text">順序が逆です</span>'
         : n != null ? `${n}日間` : '<span class="hint">未設定</span>'}</td>
     </tr>`;
   }).join('');
 
+  // 毎年打ち直さなくて済むよう、前の年度から持ってこられるようにする
+  const copyBar = hasPrevTerms(year)
+    ? `<div class="btn-row" style="margin:0 0 10px">
+         <button type="button" class="btn" id="termCopyPrev">📋 ${year - 1}年度と同じ期間にする</button>
+       </div>`
+    : '';
+
   document.getElementById('termArea').innerHTML = `
+    ${copyBar}
     <div class="table-wrap">
       <table class="sum-table term-table"><thead><tr>
         <th>休み</th><th>最大取得日数</th><th>期間（${year}年度）</th><th>日数</th>
       </tr></thead><tbody>${rows}</tbody></table>
     </div>
     <div class="hint">
-      長期休暇の期間は年によって変わるので、<b>年度ごとに</b>入れておけます。
-      入れると有給入力の画面と月別表に出ます（<b>最大取得日数とは別</b>です。
-      期間が31日間でも取得できるのが16日、ということがあるため）。
+      期間は<b>月日だけ</b>入れれば大丈夫です（「7/21」「12-25」「721」どれでもOK）。
+      年は${year}年度から決まります（<b>1〜3月は自動で${year + 1}年</b>になるので、
+      冬期のように年をまたぐ休みもそのまま入れられます）。<br>
+      <b>最大取得日数とは別もの</b>です（期間が31日間でも取れるのは16日、ということがあるため）。
     </div>
     <div class="field" style="margin-bottom:6px">
       <label>入力のしかた</label>
@@ -3092,6 +3177,20 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('staffCsvBtn').addEventListener('click', exportStaffCsv);
   // 長期休暇の入力（最大日数と、人ごとの出勤数）
   document.getElementById('termArea').addEventListener('click', e => {
+    if (e.target.closest('#termCopyPrev')) {
+      const year = currentStaffYear();
+      const filled = TERM_FIELDS.filter(t => {
+        const p = getTermPeriod(year, t.max);
+        return p.from || p.to;
+      });
+      if (filled.length && !confirm(`${year}年度にはすでに期間が入っています（${filled.map(t => t.label).join('・')}）。\n`
+        + `${year - 1}年度の内容で上書きします。よろしいですか？`)) return;
+      const n = copyTermsFromPrevYear(year);
+      saveDB();
+      renderAll();
+      showToast(`${year - 1}年度から ${n}件 を写しました。ずれている日だけ直してください`, 'success');
+      return;
+    }
     const b = e.target.closest('#termModeSeg button[data-mode]');
     if (!b || b.dataset.mode === termMode()) return;
     // すでに数字が入っているなら、意味が入れ替わることを伝える
@@ -3117,7 +3216,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const tp = e.target.closest('input.tp[data-term]');
     if (tp) {
-      getTermPeriod(year, tp.dataset.term)[tp.dataset.side] = tp.value;
+      const raw = tp.value.trim();
+      if (raw === '') {
+        getTermPeriod(year, tp.dataset.term)[tp.dataset.side] = '';
+      } else {
+        // 年度は上で選んでいるので、月日だけで年が決まる（1〜3月は翌年）
+        const date = mdToDate(year, raw);
+        if (!date) {
+          showToast(`「${raw}」は月日として読めません。「7/21」のように入れてください`, 'warning');
+          renderTermInput();
+          return;
+        }
+        getTermPeriod(year, tp.dataset.term)[tp.dataset.side] = date;
+      }
       saveDB(); renderAll();
       showToast('長期休暇の期間を保存しました', 'success');
       return;
