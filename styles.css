@@ -562,6 +562,19 @@ table.term-table td span { margin: 0 4px; color: var(--text-sub); }
 .term-auto { font-size: 11px; color: var(--accent); margin-top: 4px; }
 .term-auto.danger-text { font-weight: 600; }
 
+/* 通常入力から自動計算した出勤数（手で打つ欄の代わりに出る） */
+.term-in.auto { color: var(--accent); }
+.term-in.auto b { font-size: 15px; }
+.tag.auto {
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 5px;
+}
+.auto-val { color: var(--accent); white-space: nowrap; }
+@media print {
+  .auto-val { color: #000; }
+  .tag.auto { background: none; color: #666; }
+}
+
 /* 月別表：長期休暇の期間の日 */
 table.grid td.term { background: #fff6e0; }
 table.grid td.term.has { background: var(--accent-soft); box-shadow: inset 0 -3px 0 #f0b429; }

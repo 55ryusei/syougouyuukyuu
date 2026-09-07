@@ -463,7 +463,14 @@ function computeStaffYear(emp, year) {
     const autoDays = daily > 0 ? autoHours / daily : 0;
     const taken = manualTaken + autoDays;
     const remain = max - taken;
-    return { ...t, termKey: t.max, max, work: raw, value: num, has, taken, remain, autoDays, autoHours };
+    // 通常入力だけで管理している人は、記録に必要な出勤数（欠勤数）を打たなくていいよう自動で出す
+    //   出勤数で入力 … 出勤数 ＝ 最大日数 − 休んだ日数
+    //   欠勤数で入力 … 欠勤数 ＝ そのまま休んだ日数
+    const autoWork = autoDays > 0 ? (mode === 'absent' ? autoDays : max - autoDays) : null;
+    const workIsAuto = !has && autoWork != null;
+    const shownWork = has ? num : autoWork;
+    return { ...t, termKey: t.max, max, work: raw, value: num, has, taken, remain,
+      autoDays, autoHours, autoWork, workIsAuto, shownWork };
   });
   const longSum = terms.reduce((s, t) => s + t.taken, 0);
   const longRemain = terms.reduce((s, t) => s + t.remain, 0);
@@ -1323,12 +1330,16 @@ function renderInputTerms() {
     <div class="term-box">
       <div class="term-name">${t.label}<span class="hint">最大${t.max}日</span></div>
       ${termPeriodText(year, t.termKey) ? `<div class="term-period">${termPeriodText(year, t.termKey)}</div>` : ''}
-      <label class="term-in">${termModeLabel()}
-        <input type="number" data-term="${t.key}" step="0.5" min="0" placeholder="—"
-               value="${t.work == null ? '' : t.work}">
-      </label>
-      ${t.autoDays > 0 ? `<div class="term-auto">＋「通常有給」で入れた分 ${round2(t.autoDays)}日を自動で合算</div>` : ''}
-      ${t.has && t.autoDays > 0 ? '<div class="term-auto danger-text">⚠ 出勤数とこの合算が両方あります。同じ休みを二重に入れていないか確認してください</div>' : ''}
+      ${t.workIsAuto
+        ? `<div class="term-in auto">${termModeLabel()}
+             <b>${round2(t.autoWork)}</b> 日<span class="tag auto">自動</span>
+           </div>`
+        : `<label class="term-in">${termModeLabel()}
+             <input type="number" data-term="${t.key}" step="0.5" min="0" placeholder="—"
+                    value="${t.work == null ? '' : t.work}">
+           </label>`}
+      ${t.autoDays > 0 ? `<div class="term-auto">「通常有給」で入れた ${round2(t.autoDays)}日 から計算しています</div>` : ''}
+      ${t.has && t.autoDays > 0 ? `<div class="term-auto danger-text">⚠ 手入力の${termModeLabel()}と、通常入力からの合算が両方あります。二重に入れていないか確認してください（欄を空にすれば自動計算に戻ります）</div>` : ''}
       <div class="term-out">取得 <b>${round2(t.taken)}</b> 日</div>
       <div class="term-out${t.remain <= 0 ? ' neg' : ''}">あと <b>${round2(t.remain)}</b> 日</div>
     </div>`).join('');
@@ -1341,8 +1352,8 @@ function renderInputTerms() {
       ${termMode() === 'absent'
         ? '<b>欠勤数</b>＝その休みでもう休んだ日数。あと何日とれるかは「最大日数 − 欠勤数」。'
         : '<b>出勤数</b>＝その休みに出勤した日数。取得日数は「最大日数 − 出勤数」。'}
-      休みの期間中に「通常有給」で入れた日があれば、そちらは自動でここに合算されるので、
-      あらためて出勤数に入れ直す必要はありません。
+      休みの期間中に「通常有給」で入れた日があれば、${termModeLabel()}は<b>自動で計算</b>されます
+      （手で入れる必要はありません。手で入れると二重になります）。
       「📈 正職」タブの集計表からも同じ数字を入れられます。呼び方は正職タブで切り替えられます。
     </div>`;
 }
@@ -2001,8 +2012,10 @@ function renderStaffSummary() {
     // 出勤数／欠勤数はここでも直接入力できる（✍️ 有給入力タブと同じデータ）
     const termCells = y.terms.map(t =>
       `<td class="num in-cell">
-         <input type="number" class="term-work-in" data-emp="${e.id}" data-term="${t.key}"
-                step="0.5" min="0" placeholder="—" value="${t.work == null ? '' : t.work}">
+         ${t.workIsAuto
+           ? `<span class="auto-val" title="「通常有給」で入れた ${round2(t.autoDays)}日 から自動計算">${round2(t.autoWork)}<span class="tag auto">自動</span></span>`
+           : `<input type="number" class="term-work-in" data-emp="${e.id}" data-term="${t.key}"
+                step="0.5" min="0" placeholder="—" value="${t.work == null ? '' : t.work}">`}
        </td>
        <td class="num"${t.autoDays > 0 ? ` title="うち「通常有給」からの合算 ${round2(t.autoDays)}日"` : ''}>${round2(t.taken)}${t.autoDays > 0 ? '*' : ''} 日</td>
        <td class="num">${round2(t.remain)} 日</td>`).join('');
@@ -2058,7 +2071,7 @@ function renderStaffSummary() {
       <div class="hint">
         ・「取得回数」＝ その年度に有給を入れた件数（長期休暇の期間中の分は除く）。「有給取得日数」＝ 合計取得時間 ÷ 1日の勤務時間。<br>
         ・<span class="in-head-sample">色つきの欄</span>が長期休暇の${termModeLabel()}。ここに直接入れられます（「✍️ 有給入力」タブでも同じ数字が入れられます）。<br>
-        ・長期休暇の期間中に「通常有給」で入れた日があれば、二重に数えないよう自動でその休みの取得（<b>*</b>印）に合算します。<br>
+        ・長期休暇の期間中に「通常有給」で入れた日がある人は、${termModeLabel()}を<b>自動計算</b>して「自動」と出します（取得には <b>*</b> 印）。手で打つ必要はありません。<br>
         ・「1日の勤務時間」は「👤 従業員情報」で各自に合わせて変更できます。
       </div>
     </div>`;
@@ -2076,12 +2089,14 @@ function exportStaffCsv() {
     `冬期${ml}`, `冬期取得(最大${f.maxLeave.winter})`, '冬期残り',
     `春期${ml}`, `春期取得(最大${f.maxLeave.spring})`, '春期残り',
     '長期休暇取得計', '長期休暇残り計']];
+  // 手入力が無くても、通常入力から自動計算した出勤数を書き出す（記録にはこの数字が要るため）
+  const workCol = t => (t.shownWork == null ? '' : round2(t.shownWork));
   for (const e of list) {
     const y = computeStaffYear(e, year);
     rows.push([e.name, y.count, round2(y.totalHours), y.daily, toDaysPlus(y.totalHours, y.daily),
-      y.terms[0].has ? y.terms[0].work : '', round2(y.terms[0].taken), round2(y.terms[0].remain),
-      y.terms[1].has ? y.terms[1].work : '', round2(y.terms[1].taken), round2(y.terms[1].remain),
-      y.terms[2].has ? y.terms[2].work : '', round2(y.terms[2].taken), round2(y.terms[2].remain),
+      workCol(y.terms[0]), round2(y.terms[0].taken), round2(y.terms[0].remain),
+      workCol(y.terms[1]), round2(y.terms[1].taken), round2(y.terms[1].remain),
+      workCol(y.terms[2]), round2(y.terms[2].taken), round2(y.terms[2].remain),
       round2(y.longSum), round2(y.longRemain)]);
   }
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
