@@ -559,6 +559,8 @@ table.term-table td span { margin: 0 4px; color: var(--text-sub); }
 
 /* 有給入力タブに出す期間 */
 .term-period { font-size: 11px; color: var(--text-sub); margin-bottom: 4px; }
+.term-auto { font-size: 11px; color: var(--accent); margin-top: 4px; }
+.term-auto.danger-text { font-weight: 600; }
 
 /* 月別表：長期休暇の期間の日 */
 table.grid td.term { background: #fff6e0; }
@@ -627,3 +629,10 @@ table.term-table td.md-cell input[type=text] {
   width: 74px; text-align: center; font-size: 14px;
 }
 table.term-table td.md-cell .hint { margin-top: 3px; }
+
+/* 集計表の入力できる列（凡例のサンプル四角） */
+.in-head-sample {
+  display: inline-block; width: 14px; height: 14px; border-radius: 3px;
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  vertical-align: middle; margin: 0 2px;
+}

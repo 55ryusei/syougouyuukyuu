@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>年次有給休暇 管理ツール 1.0.0</title>
-<link rel="stylesheet" href="styles.css?v=2.9.0">
+<link rel="stylesheet" href="styles.css?v=2.11.0">
 </head>
 <body>
 
@@ -13,7 +13,7 @@
     <span class="brand-icon">🏖</span>
     <div>
       <h1>年次有給休暇 管理ツール</h1>
-      <div class="brand-sub">パートも正職も、入力はここだけ<span class="ver">v2.9.0</span></div>
+      <div class="brand-sub">パートも正職も、入力はここだけ<span class="ver">v2.11.0</span></div>
     </div>
   </div>
   <div class="header-right">
@@ -44,60 +44,67 @@
         <select id="inEmp"></select>
       </div>
 
-      <div class="field">
-        <label>取得日（カレンダーをクリックで複数選択）</label>
-        <div id="paidCalendar" class="calendar"></div>
-        <input type="text" id="inDates" placeholder="例: 2026-05-12, 2026-05-13" autocomplete="off">
-        <div class="hint">カレンダーで選ぶと入ります。直接書いてもOK。</div>
+      <div class="seg hidden" id="inModeSeg">
+        <button type="button" data-mode="normal" class="active">通常有給</button>
+        <button type="button" data-mode="term">長期休暇（夏期・冬期・春期）</button>
       </div>
 
-      <div class="field" id="inTypeField">
-        <label>取得の単位</label>
-        <div id="inType" class="seg">
-          <button type="button" data-type="full" class="active">全日</button>
-          <button type="button" data-type="am">半休</button>
+      <div id="inNormalGroup">
+        <div class="field">
+          <label>取得日（カレンダーをクリックで複数選択）</label>
+          <div id="paidCalendar" class="calendar"></div>
+          <input type="text" id="inDates" placeholder="例: 2026-05-12, 2026-05-13" autocomplete="off">
+          <div class="hint">カレンダーで選ぶと入ります。直接書いてもOK。</div>
+        </div>
+
+        <div class="field" id="inTypeField">
+          <label>取得の単位</label>
+          <div id="inType" class="seg">
+            <button type="button" data-type="full" class="active">全日</button>
+            <button type="button" data-type="am">半休</button>
+          </div>
+        </div>
+
+        <div class="field" id="inShiftField">
+          <label id="inShiftLabel">TC5に出す勤務時間帯</label>
+          <div class="time-row">
+            <input type="time" id="inTime1a"><span>〜</span><input type="time" id="inTime1b">
+          </div>
+          <div class="time-row" id="inTimeRow2">
+            <input type="time" id="inTime2a"><span>〜</span><input type="time" id="inTime2b">
+            <span class="hint inline">②は中抜けの人だけ</span>
+          </div>
+          <div class="seg quick" id="shiftQuick"></div>
+          <div class="calc" id="shiftCalc"></div>
+          <div class="hint" id="shiftHint"></div>
+        </div>
+
+        <div class="field hidden" id="hoursField">
+          <button type="button" class="link-btn" id="hoursToggle">時間数を直接入力する</button>
+          <div class="hidden" id="hoursBox">
+            <label for="inHours" id="hoursLabel">時間数</label>
+            <input type="text" id="inHours" placeholder="例: 2:30" autocomplete="off" inputmode="text">
+            <div class="hint" id="hoursHint"></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="inNote">メモ（任意）</label>
+          <input type="text" id="inNote" placeholder="例: 私用" autocomplete="off">
+        </div>
+
+        <div id="balancePreview" class="balance-preview"></div>
+
+        <div class="btn-row">
+          <button type="button" id="inSubmit" class="btn primary">この内容で登録</button>
+          <button type="button" id="inCancelEdit" class="btn hidden">編集をやめる</button>
+          <button type="button" id="inClear" class="btn">クリア</button>
         </div>
       </div>
-
-      <div class="field" id="inShiftField">
-        <label id="inShiftLabel">TC5に出す勤務時間帯</label>
-        <div class="time-row">
-          <input type="time" id="inTime1a"><span>〜</span><input type="time" id="inTime1b">
-        </div>
-        <div class="time-row" id="inTimeRow2">
-          <input type="time" id="inTime2a"><span>〜</span><input type="time" id="inTime2b">
-          <span class="hint inline">②は中抜けの人だけ</span>
-        </div>
-        <div class="seg quick" id="shiftQuick"></div>
-        <div class="calc" id="shiftCalc"></div>
-        <div class="hint" id="shiftHint"></div>
-      </div>
-
-      <div class="field hidden" id="hoursField">
-        <button type="button" class="link-btn" id="hoursToggle">時間数を直接入力する</button>
-        <div class="hidden" id="hoursBox">
-          <label for="inHours" id="hoursLabel">時間数</label>
-          <input type="text" id="inHours" placeholder="例: 2:30" autocomplete="off" inputmode="text">
-          <div class="hint" id="hoursHint"></div>
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="inNote">メモ（任意）</label>
-        <input type="text" id="inNote" placeholder="例: 私用" autocomplete="off">
-      </div>
-
-      <div id="balancePreview" class="balance-preview"></div>
 
       <div class="field hidden" id="inTermField">
         <label>長期休暇（夏期・冬期・春期）</label>
         <div id="inTermArea"></div>
-      </div>
-
-      <div class="btn-row">
-        <button type="button" id="inSubmit" class="btn primary">この内容で登録</button>
-        <button type="button" id="inCancelEdit" class="btn hidden">編集をやめる</button>
-        <button type="button" id="inClear" class="btn">クリア</button>
       </div>
     </div>
 
@@ -435,6 +442,6 @@
 <div id="toastArea"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
-<script src="script.js?v=2.9.0"></script>
+<script src="script.js?v=2.11.0"></script>
 </body>
 </html>

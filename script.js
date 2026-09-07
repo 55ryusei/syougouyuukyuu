@@ -424,10 +424,24 @@ function leaveHours(leave, emp) {
  * 正職方式の年度集計。正職ツールの集計表とまったく同じ計算をする。
  *   有給取得日数 ＝ 年度の合計時間 ÷ 1日の勤務時間（「○日＋余り時間」）
  *   長期休暇の取得日数 ＝ 最大日数 − 出勤数（出勤数が空欄なら0日）
+ *
+ * 長期休暇（夏期・冬期・春期）の期間として設定されている日は、「通常」方式で
+ * 入れてあっても通常有給には数えず、その休みの取得日数のほうに自動で合算する。
+ * これにより、出勤数／欠勤数の入力と、通常入力による二重計上を避ける。
  */
 function computeStaffYear(emp, year) {
   const { start, end } = fiscalRange(year);
-  const takes = leavesOf(emp.id).filter(l => l.date >= start && l.date <= end);
+  const allTakes = leavesOf(emp.id).filter(l => l.date >= start && l.date <= end);
+
+  // 休み期間に入っている日と、それ以外（ふつうの通常有給）を分ける
+  const takes = [];
+  const inTermHours = {};   // t.max → その期間中に「通常」で入っている時間の合計
+  for (const l of allTakes) {
+    const t = termOfDate(year, l.date);
+    if (t) inTermHours[t.max] = (inTermHours[t.max] || 0) + leaveHours(l, emp);
+    else takes.push(l);
+  }
+
   const totalHours = takes.reduce((s, l) => s + leaveHours(l, emp), 0);
   const daily = Number(emp.dailyHours) || 0;
   const days = daily > 0 ? Math.trunc(totalHours / daily) : 0;
@@ -443,9 +457,13 @@ function computeStaffYear(emp, year) {
     const num = has ? (parseFloat(raw) || 0) : 0;
     // 出勤数で入れたとき … 取得＝最大−出勤数、残り＝出勤数
     // 欠勤数で入れたとき … 欠勤＝もう休んだ日数なので 取得＝欠勤数、残り＝最大−欠勤数
-    const taken  = !has ? 0   : (mode === 'absent' ? num : max - num);
-    const remain = !has ? max : (mode === 'absent' ? max - num : num);
-    return { ...t, termKey: t.max, max, work: raw, value: num, has, taken, remain };
+    const manualTaken = !has ? 0 : (mode === 'absent' ? num : max - num);
+    // その期間中に「通常」で入っている分を日数に換算して合算する（二重には数えない）
+    const autoHours = inTermHours[t.max] || 0;
+    const autoDays = daily > 0 ? autoHours / daily : 0;
+    const taken = manualTaken + autoDays;
+    const remain = max - taken;
+    return { ...t, termKey: t.max, max, work: raw, value: num, has, taken, remain, autoDays, autoHours };
   });
   const longSum = terms.reduce((s, t) => s + t.taken, 0);
   const longRemain = terms.reduce((s, t) => s + t.remain, 0);
@@ -1020,6 +1038,7 @@ let editingLeaveId = null;             // 編集中の有給のid
 let paidSelected = new Set();          // 選択中の日付
 let paidCursor = new Date();           // カレンダー表示中の月
 let inputType = 'full';
+let inMode = 'normal';                 // 正職の人が見ているのが「通常有給」か「長期休暇」か
 
 function renderCalendar() {
   const box = document.getElementById('paidCalendar');
@@ -1204,6 +1223,18 @@ function renderShiftCalc() {
     + (staff ? 'の有給として記録します' : 'ぶんがTC5の給与に加算されます') + '</span>';
 }
 
+// 正職の人は「通常有給」と「長期休暇」を1画面に並べると長くなるので、選択制で切り替える
+function applyInputModeVisibility() {
+  const emp = getEmp(document.getElementById('inEmp').value);
+  const staff = emp && (emp.type || 'part') === 'staff';
+  document.getElementById('inModeSeg').classList.toggle('hidden', !staff);
+  document.querySelectorAll('#inModeSeg button').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === inMode));
+  const showTerm = !!staff && inMode === 'term';
+  document.getElementById('inNormalGroup').classList.toggle('hidden', showTerm);
+  document.getElementById('inTermField').classList.toggle('hidden', !showTerm);
+}
+
 // 選んだ人の方式に合わせて入力欄の出し方を変える
 //   正職方式 … 正職ツールと同じで「時間」だけを入れる。全日／半休の区別はない
 //   パート方式 … 管理簿と同じで 全日／半休／時間単位 から選ぶ
@@ -1211,6 +1242,7 @@ function applyInputMode(fill) {
   const emp = getEmp(document.getElementById('inEmp').value);
   const staff = emp && (emp.type || 'part') === 'staff';
   renderInputTerms();
+  applyInputModeVisibility();
   document.getElementById('inTypeField').classList.toggle('hidden', !!staff);
   // 時間帯はどちらの方式でも使う（正職は時間の計算用、パートはTC5へ渡す用）
   document.getElementById('inShiftLabel').textContent = staff
@@ -1279,12 +1311,10 @@ function dates0() {
   return (d && d.length) ? d[0] : todayStr();
 }
 
-/* 有給入力タブでも長期休暇を入れられるようにする（正職の人だけ） */
+/* 有給入力タブでも長期休暇を入れられるようにする（正職の人だけ、「長期休暇」を選んだときに表示） */
 function renderInputTerms() {
-  const field = document.getElementById('inTermField');
   const emp = getEmp(document.getElementById('inEmp').value);
   const staff = emp && (emp.type || 'part') === 'staff';
-  field.classList.toggle('hidden', !staff);
   if (!staff) return;
 
   const year = fiscalYearOf(dates0());
@@ -1297,6 +1327,8 @@ function renderInputTerms() {
         <input type="number" data-term="${t.key}" step="0.5" min="0" placeholder="—"
                value="${t.work == null ? '' : t.work}">
       </label>
+      ${t.autoDays > 0 ? `<div class="term-auto">＋「通常有給」で入れた分 ${round2(t.autoDays)}日を自動で合算</div>` : ''}
+      ${t.has && t.autoDays > 0 ? '<div class="term-auto danger-text">⚠ 出勤数とこの合算が両方あります。同じ休みを二重に入れていないか確認してください</div>' : ''}
       <div class="term-out">取得 <b>${round2(t.taken)}</b> 日</div>
       <div class="term-out${t.remain <= 0 ? ' neg' : ''}">あと <b>${round2(t.remain)}</b> 日</div>
     </div>`).join('');
@@ -1309,7 +1341,9 @@ function renderInputTerms() {
       ${termMode() === 'absent'
         ? '<b>欠勤数</b>＝その休みでもう休んだ日数。あと何日とれるかは「最大日数 − 欠勤数」。'
         : '<b>出勤数</b>＝その休みに出勤した日数。取得日数は「最大日数 − 出勤数」。'}
-      入れた内容は「📈 正職」タブと同じもので、呼び方は正職タブで切り替えられます。
+      休みの期間中に「通常有給」で入れた日があれば、そちらは自動でここに合算されるので、
+      あらためて出勤数に入れ直す必要はありません。
+      「📈 正職」タブの集計表からも同じ数字を入れられます。呼び方は正職タブで切り替えられます。
     </div>`;
 }
 
@@ -1322,11 +1356,16 @@ function renderBalancePreview() {
     const year = fiscalYearOf(dates0());
     const y = computeStaffYear(emp, year);
     const dts = collectInputDates() || [];
+    const inTermDts = dts.filter(d => termOfDate(year, d));
     const add = dts.length * (inputType === 'hours'
       ? inputHours()
       : (inputType === 'full' ? y.daily : y.daily / 2));
     let h = `${year}年度の取得 <b>${y.count}回</b>／<b>${toDaysPlus(y.totalHours, y.daily)}</b>（${round2(y.totalHours)}時間）`;
-    if (add > 0) h += ` → 今回 ${round2(add)}時間 を足すと <b>${toDaysPlus(y.totalHours + add, y.daily)}</b>`;
+    if (add > 0) {
+      h += inTermDts.length
+        ? ` → うち${inTermDts.length}日は長期休暇の期間なので、通常有給ではなく長期休暇のほうに加算されます`
+        : ` → 今回 ${round2(add)}時間 を足すと <b>${toDaysPlus(y.totalHours + add, y.daily)}</b>`;
+    }
     if (y.longSum || y.longRemain) {
       h += `<br>長期休暇：取得 ${round2(y.longSum)}日 ／ あと ${round2(y.longRemain)}日とれます`;
     }
@@ -1365,6 +1404,7 @@ function startEditLeave(id) {
 
   editingLeaveId = id;
   document.getElementById('inEmp').value = emp.id;
+  inMode = 'normal';
   applyShiftDefault();
   applyInputMode();
   setInputType(l.type);
@@ -1408,7 +1448,17 @@ function submitLeave() {
 
   const dates = collectInputDates();
   if (dates === null) { showToast('日付は YYYY-MM-DD 形式で入力してください', 'warning'); return; }
-  if (!dates.length) { showToast('取得日を選んでください', 'warning'); return; }
+  if (!dates.length) {
+    // 正職の人が長期休暇（出勤数）だけ入れて登録ボタンを押した場合。
+    // その数字はすでに変更した瞬間に保存済みなので、まぎらわしい「取得日」エラーは出さない。
+    const staff = (emp.type || 'part') === 'staff';
+    const hasTime = document.getElementById('inTime1a').value || document.getElementById('inTime2a').value;
+    if (staff && inputHours() <= 0 && !hasTime) {
+      showToast('長期休暇の出勤数はすでに保存されています。通常の有給を登録する場合は取得日も選んでください', 'info');
+      return;
+    }
+    showToast('取得日を選んでください', 'warning'); return;
+  }
 
   const hours = inputHours();
   if (inputType === 'hours' && hours <= 0) {
@@ -1926,7 +1976,7 @@ function renderStaffGrid() {
       <div class="hint">
         数字はその日に入っている有給の時間（時:分）。入力は「✍️ 有給入力」タブから。
         ${TERM_FIELDS.some(t => termLength(getTermPeriod(year, t.max)) != null)
-          ? '<span class="term-legend">■</span> の日は長期休暇の期間です。' : ''}
+          ? '<span class="term-legend">■</span> の日は長期休暇の期間です（集計表では通常有給ではなく長期休暇として数えます）。' : ''}
       </div>
     </div>`;
 }
@@ -1948,9 +1998,13 @@ function renderStaffSummary() {
     sumHours += y.totalHours; sumDays += y.days; sumRest += y.rest; sumLongAll += y.longSum;
     sumCount += y.count; sumLongRemain += y.longRemain;
     y.terms.forEach((t, i) => { sumLong[i] += t.taken; });
+    // 出勤数／欠勤数はここでも直接入力できる（✍️ 有給入力タブと同じデータ）
     const termCells = y.terms.map(t =>
-      `<td class="num">${t.has ? t.work : '—'}</td>
-       <td class="num">${round2(t.taken)} 日</td>
+      `<td class="num in-cell">
+         <input type="number" class="term-work-in" data-emp="${e.id}" data-term="${t.key}"
+                step="0.5" min="0" placeholder="—" value="${t.work == null ? '' : t.work}">
+       </td>
+       <td class="num"${t.autoDays > 0 ? ` title="うち「通常有給」からの合算 ${round2(t.autoDays)}日"` : ''}>${round2(t.taken)}${t.autoDays > 0 ? '*' : ''} 日</td>
        <td class="num">${round2(t.remain)} 日</td>`).join('');
     return `<tr>
       <td>${esc(e.name)}${e.mode === 'swim' ? ' <span class="tag swim">SW</span>' : ''}</td>
@@ -1982,9 +2036,9 @@ function renderStaffSummary() {
           </tr>
           <tr>
             <th>取得回数</th><th>合計取得時間</th><th>1日の勤務時間</th><th>有給取得日数</th>
-            <th>${termModeLabel()}</th><th>取得</th><th>残り</th>
-            <th>${termModeLabel()}</th><th>取得</th><th>残り</th>
-            <th>${termModeLabel()}</th><th>取得</th><th>残り</th>
+            <th class="in-head">${termModeLabel()}</th><th>取得</th><th>残り</th>
+            <th class="in-head">${termModeLabel()}</th><th>取得</th><th>残り</th>
+            <th class="in-head">${termModeLabel()}</th><th>取得</th><th>残り</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -2002,8 +2056,9 @@ function renderStaffSummary() {
         </table>
       </div>
       <div class="hint">
-        ・「取得回数」＝ その年度に有給を入れた件数。「有給取得日数」＝ 合計取得時間 ÷ 1日の勤務時間。<br>
-        ・長期休暇の「残り」＝ あと何日とれるか。<b>入力は「✍️ 有給入力」タブで</b>。<br>
+        ・「取得回数」＝ その年度に有給を入れた件数（長期休暇の期間中の分は除く）。「有給取得日数」＝ 合計取得時間 ÷ 1日の勤務時間。<br>
+        ・<span class="in-head-sample">色つきの欄</span>が長期休暇の${termModeLabel()}。ここに直接入れられます（「✍️ 有給入力」タブでも同じ数字が入れられます）。<br>
+        ・長期休暇の期間中に「通常有給」で入れた日があれば、二重に数えないよう自動でその休みの取得（<b>*</b>印）に合算します。<br>
         ・「1日の勤務時間」は「👤 従業員情報」で各自に合わせて変更できます。
       </div>
     </div>`;
@@ -3018,6 +3073,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- 有給入力 ---
   document.getElementById('inEmp').addEventListener('change', () => {
+    inMode = 'normal';
     // 前に選んでいた人の時間帯が残らないように一度消す（全日ならこのあと所定が入る）
     for (const id of ['inTime1a', 'inTime1b', 'inTime2a', 'inTime2b']) {
       document.getElementById(id).value = '';
@@ -3045,6 +3101,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('inType').addEventListener('click', e => {
     const b = e.target.closest('button[data-type]');
     if (b) setInputType(b.dataset.type, true);
+  });
+  document.getElementById('inModeSeg').addEventListener('click', e => {
+    const b = e.target.closest('button[data-mode]');
+    if (!b) return;
+    inMode = b.dataset.mode;
+    applyInputModeVisibility();
   });
   // 有給入力タブからの長期休暇の入力
   document.getElementById('inTermArea').addEventListener('change', e => {
@@ -3175,6 +3237,19 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('gridPrintBtn').addEventListener('click', () => printCard('gridPrint'));
   document.getElementById('staffPrintBtn').addEventListener('click', () => printCard('staffPrint'));
   document.getElementById('staffCsvBtn').addEventListener('click', exportStaffCsv);
+  // 集計表からも長期休暇の出勤数／欠勤数を直接入力できる（有給入力タブと同じ入り口がもう1つ増えたもの）
+  document.getElementById('staffArea').addEventListener('change', e => {
+    const inp = e.target.closest('input.term-work-in[data-emp][data-term]');
+    if (!inp) return;
+    const emp = getEmp(inp.dataset.emp);
+    if (!emp) return;
+    const year = currentStaffYear();
+    const w = getTermWork(year, emp.id);
+    w[inp.dataset.term] = inp.value.trim() === '' ? '' : (parseFloat(inp.value) || 0);
+    saveDB();
+    renderAll();
+    showToast(`${emp.name}さんの ${year}年度の長期休暇を更新しました`, 'success');
+  });
   // 長期休暇の入力（最大日数と、人ごとの出勤数）
   document.getElementById('termArea').addEventListener('click', e => {
     if (e.target.closest('#termCopyPrev')) {
