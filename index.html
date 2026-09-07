@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>年次有給休暇 管理ツール 1.0.0</title>
-<link rel="stylesheet" href="styles.css?v=2.12.0">
+<link rel="stylesheet" href="styles.css?v=2.13.0">
 </head>
 <body>
 
@@ -13,7 +13,7 @@
     <span class="brand-icon">🏖</span>
     <div>
       <h1>年次有給休暇 管理ツール</h1>
-      <div class="brand-sub">パートも正職も、入力はここだけ<span class="ver">v2.12.0</span></div>
+      <div class="brand-sub">パートも正職も、入力はここだけ<span class="ver">v2.13.0</span></div>
     </div>
   </div>
   <div class="header-right">
@@ -40,8 +40,13 @@
       <h2>有給を登録</h2>
 
       <div class="field">
-        <label for="inEmp">従業員 <span class="badge" id="inEmpBadge"></span></label>
-        <select id="inEmp"></select>
+        <label for="inEmpText">従業員 <span class="badge" id="inEmpBadge"></span></label>
+        <div class="combo">
+          <input type="text" id="inEmpText" placeholder="名前を打つか、ここを押して選ぶ" autocomplete="off">
+          <button type="button" class="combo-btn" id="inEmpArrow" tabindex="-1">▾</button>
+          <div class="combo-list hidden" id="inEmpList"></div>
+        </div>
+        <input type="hidden" id="inEmp">
       </div>
 
       <div class="seg hidden" id="inModeSeg">
@@ -111,7 +116,11 @@
     <div class="card">
       <h2>登録済みの有給 <span class="count" id="leaveCount"></span></h2>
       <div class="field row">
-        <input type="search" id="leaveSearch" placeholder="名前で絞り込み">
+        <div class="combo">
+          <input type="text" id="leaveSearch" placeholder="名前で絞り込み" autocomplete="off">
+          <button type="button" class="combo-btn" id="leaveSearchArrow" tabindex="-1">▾</button>
+          <div class="combo-list hidden" id="leaveSearchList"></div>
+        </div>
         <select id="leaveMonth"></select>
         <select id="leaveSort">
           <option value="date_desc">日付が新しい順</option>
@@ -442,6 +451,6 @@
 <div id="toastArea"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
-<script src="script.js?v=2.12.0"></script>
+<script src="script.js?v=2.13.0"></script>
 </body>
 </html>

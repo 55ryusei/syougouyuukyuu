@@ -562,18 +562,14 @@ table.term-table td span { margin: 0 4px; color: var(--text-sub); }
 .term-auto { font-size: 11px; color: var(--accent); margin-top: 4px; }
 .term-auto.danger-text { font-weight: 600; }
 
-/* 通常入力から自動計算した出勤数（手で打つ欄の代わりに出る） */
-.term-in.auto { color: var(--accent); }
-.term-in.auto b { font-size: 15px; }
-.tag.auto {
-  background: var(--accent-soft); color: var(--accent);
-  font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 5px;
-}
-.auto-val { color: var(--accent); white-space: nowrap; }
-@media print {
-  .auto-val { color: #000; }
-  .tag.auto { background: none; color: #666; }
-}
+/* 通常入力から計算した出勤数（手で打つ欄の代わりに、数字だけ出す） */
+.term-in-label { color: var(--text-sub); }
+.term-in-val { font-size: 15px; color: var(--text); }
+.auto-val { font-size: 14px; white-space: nowrap; }
+
+/* 長期休暇の合計（説明文より目立たせる） */
+.term-sum { font-size: 13px; margin-top: 10px; }
+.term-sum b { font-size: 15px; }
 
 /* 月別表：長期休暇の期間の日 */
 table.grid td.term { background: #fff6e0; }
@@ -649,3 +645,28 @@ table.term-table td.md-cell .hint { margin-top: 3px; }
   background: var(--accent-soft); border: 1px solid var(--accent);
   vertical-align: middle; margin: 0 2px;
 }
+
+/* ===== 名前を打っても一覧から選んでもいい欄 ===== */
+.combo { position: relative; flex: 1; min-width: 0; }
+.combo input { width: 100%; padding-right: 30px; }
+.combo-btn {
+  position: absolute; right: 1px; top: 1px; bottom: 1px; width: 26px;
+  border: 0; background: none; color: var(--text-sub);
+  font-size: 11px; cursor: pointer; border-radius: 0 6px 6px 0;
+}
+.combo-btn:hover { color: var(--text); }
+.combo-list {
+  position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 3px);
+  max-height: 260px; overflow-y: auto;
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .16);
+}
+.combo-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; font-size: 14px; cursor: pointer;
+}
+.combo-item + .combo-item { border-top: 1px solid var(--border); }
+.combo-item:hover, .combo-item.on { background: var(--accent-soft); color: var(--accent); }
+.combo-sub { margin-left: auto; font-size: 11px; color: var(--text-sub); }
+.combo-item:hover .combo-sub, .combo-item.on .combo-sub { color: var(--accent); }
+.combo-empty { padding: 10px; font-size: 12.5px; color: var(--text-sub); }

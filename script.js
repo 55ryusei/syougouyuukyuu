@@ -1331,30 +1331,32 @@ function renderInputTerms() {
       <div class="term-name">${t.label}<span class="hint">最大${t.max}日</span></div>
       ${termPeriodText(year, t.termKey) ? `<div class="term-period">${termPeriodText(year, t.termKey)}</div>` : ''}
       ${t.workIsAuto
-        ? `<div class="term-in auto">${termModeLabel()}
-             <b>${round2(t.autoWork)}</b> 日<span class="tag auto">自動</span>
+        ? `<div class="term-in"><span class="term-in-label">${termModeLabel()}</span>
+             <b class="term-in-val">${round2(t.autoWork)}</b> 日
            </div>`
         : `<label class="term-in">${termModeLabel()}
              <input type="number" data-term="${t.key}" step="0.5" min="0" placeholder="—"
                     value="${t.work == null ? '' : t.work}">
            </label>`}
-      ${t.autoDays > 0 ? `<div class="term-auto">「通常有給」で入れた ${round2(t.autoDays)}日 から計算しています</div>` : ''}
+      ${t.autoDays > 0 ? `<div class="term-auto">通常有給で入れた ${round2(t.autoDays)}日 から計算</div>` : ''}
       ${t.has && t.autoDays > 0 ? `<div class="term-auto danger-text">⚠ 手入力の${termModeLabel()}と、通常入力からの合算が両方あります。二重に入れていないか確認してください（欄を空にすれば自動計算に戻ります）</div>` : ''}
       <div class="term-out">取得 <b>${round2(t.taken)}</b> 日</div>
       <div class="term-out${t.remain <= 0 ? ' neg' : ''}">あと <b>${round2(t.remain)}</b> 日</div>
     </div>`).join('');
 
+  const hasAuto = y.terms.some(t => t.workIsAuto);
   document.getElementById('inTermArea').innerHTML = `
     <div class="term-row">${cells}</div>
+    <div class="term-sum">
+      ${year}年度（${year}/4〜${year + 1}/3）　取得計 <b>${round2(y.longSum)}日</b> ／ あと <b>${round2(y.longRemain)}日</b>
+    </div>
     <div class="hint">
-      ${year}年度（${year}/4〜${year + 1}/3）／ 取得計 <b>${round2(y.longSum)}日</b> ／
-      あとどれだけとれる <b>${round2(y.longRemain)}日</b>。
       ${termMode() === 'absent'
-        ? '<b>欠勤数</b>＝その休みでもう休んだ日数。あと何日とれるかは「最大日数 − 欠勤数」。'
-        : '<b>出勤数</b>＝その休みに出勤した日数。取得日数は「最大日数 − 出勤数」。'}
-      休みの期間中に「通常有給」で入れた日があれば、${termModeLabel()}は<b>自動で計算</b>されます
-      （手で入れる必要はありません。手で入れると二重になります）。
-      「📈 正職」タブの集計表からも同じ数字を入れられます。呼び方は正職タブで切り替えられます。
+        ? '欠勤数＝その休みで休んだ日数。あと何日とれるか＝最大日数 − 欠勤数。'
+        : '出勤数＝その休みに出勤した日数。取得＝最大日数 − 出勤数。'}
+      ${hasAuto
+        ? `<br>期間中に通常有給で入れた日がある休みは、${termModeLabel()}を計算して出しています（手で入れると二重になります）。`
+        : ''}
     </div>`;
 }
 
@@ -1415,6 +1417,7 @@ function startEditLeave(id) {
 
   editingLeaveId = id;
   document.getElementById('inEmp').value = emp.id;
+  syncInEmpText();
   inMode = 'normal';
   applyShiftDefault();
   applyInputMode();
@@ -1603,21 +1606,144 @@ function refreshMonthFilter() {
   if (months.includes(cur)) sel.value = cur;
 }
 
+/* --- 名前を打っても一覧から選んでもいい欄（selectは打てないので自作） --- */
+/*
+ *  textId  … 見えている入力欄
+ *  listId  … 候補を出すところ
+ *  valueId … 選んだ人のidを入れておく hidden（既存のコードはここを読む）。
+ *            省略すると、打った文字がそのまま値になる（絞り込み用）
+ */
+const COMBOS = {};
+
+function comboItems(c) {
+  const q = document.getElementById(c.textId).value.trim();
+  const all = c.getItems();
+  // 打っている途中は絞り込む。選び終わった直後（＝表示名と一致）は全部出す
+  if (!q || all.some(it => it.label === q)) return all;
+  return all.filter(it => it.label.includes(q) || (it.sub || '').includes(q));
+}
+
+function renderCombo(name) {
+  const c = COMBOS[name];
+  const list = document.getElementById(c.listId);
+  c.items = comboItems(c);
+  if (!c.items.length) {
+    list.innerHTML = '<div class="combo-empty">見つかりません</div>';
+    return;
+  }
+  list.innerHTML = c.items.map((it, i) =>
+    `<div class="combo-item${i === c.cursor ? ' on' : ''}" data-i="${i}">${esc(it.label)}`
+    + `${it.sub ? `<span class="combo-sub">${esc(it.sub)}</span>` : ''}</div>`).join('');
+}
+
+function openCombo(name) {
+  const c = COMBOS[name];
+  c.cursor = -1;
+  renderCombo(name);
+  document.getElementById(c.listId).classList.remove('hidden');
+}
+
+function closeCombo(name) {
+  document.getElementById(COMBOS[name].listId).classList.add('hidden');
+}
+
+function pickCombo(name, i) {
+  const c = COMBOS[name];
+  const it = c.items[i];
+  if (!it) return;
+  document.getElementById(c.textId).value = it.label;
+  if (c.valueId) {
+    const hid = document.getElementById(c.valueId);
+    hid.value = it.value;
+    hid.dispatchEvent(new Event('change'));
+  }
+  closeCombo(name);
+  if (c.onPick) c.onPick(it);
+}
+
+function setupCombo(name, conf) {
+  const c = COMBOS[name] = { ...conf, items: [], cursor: -1 };
+  const text = document.getElementById(c.textId);
+  const list = document.getElementById(c.listId);
+
+  const show = () => openCombo(name);
+  text.addEventListener('focus', show);
+  text.addEventListener('click', show);
+  if (c.arrowId) document.getElementById(c.arrowId).addEventListener('click', () => {
+    if (list.classList.contains('hidden')) { text.focus(); show(); } else closeCombo(name);
+  });
+
+  text.addEventListener('input', () => {
+    openCombo(name);
+    if (c.onType) c.onType();
+  });
+
+  text.addEventListener('keydown', e => {
+    const open = !list.classList.contains('hidden');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) { openCombo(name); return; }
+      const d = e.key === 'ArrowDown' ? 1 : -1;
+      c.cursor = Math.min(Math.max(c.cursor + d, 0), c.items.length - 1);
+      renderCombo(name);
+      const on = list.querySelector('.combo-item.on');
+      if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      if (open && c.cursor >= 0) { e.preventDefault(); pickCombo(name, c.cursor); }
+      else closeCombo(name);
+    } else if (e.key === 'Escape') {
+      closeCombo(name);
+    }
+  });
+
+  // クリックで選ぶ。blurより先に動くよう mousedown で受ける
+  list.addEventListener('mousedown', e => {
+    const row = e.target.closest('.combo-item');
+    if (!row) return;
+    e.preventDefault();
+    pickCombo(name, Number(row.dataset.i));
+  });
+
+  text.addEventListener('blur', () => {
+    closeCombo(name);
+    // idを持つ欄は、打ちかけの文字を残さず選んである人の名前に戻す
+    if (c.valueId && c.syncText) c.syncText();
+  });
+}
+
+function empComboItems() {
+  return sortedEmployees().filter(e => e.active !== false).map(e => ({
+    value: e.id,
+    label: e.name + (e.mode === 'swim' ? '（スイミング）' : ''),
+    sub: e.tcName && e.tcName !== e.name ? `TC5：${e.tcName}` : ''
+  }));
+}
+
+// hidden に入っているidに合わせて、見えている欄の文字を直す
+function syncInEmpText() {
+  const emp = getEmp(document.getElementById('inEmp').value);
+  const it = empComboItems().find(x => x.value === (emp && emp.id));
+  document.getElementById('inEmpText').value = it ? it.label : '';
+}
+
 function refreshEmpSelects() {
   const all = sortedEmployees();
-  const opt = e =>
-    `<option value="${e.id}">${esc(e.name)}${e.mode === 'swim' ? '（スイミング）' : ''}${e.active === false ? '（退職）' : ''}</option>`;
   // 入力は在籍者だけ、管理簿は退職者も見られるようにする
-  const sets = {
-    inEmp:   all.filter(e => e.active !== false),
-    bookEmp: all.filter(e => (e.type || 'part') === 'part')
-  };
-  for (const id in sets) {
-    const sel = document.getElementById(id);
-    const cur = sel.value;
-    sel.innerHTML = sets[id].map(opt).join('') || '<option value="">（従業員が未登録です）</option>';
-    if (sets[id].some(e => e.id === cur)) sel.value = cur;
-  }
+  const forInput = all.filter(e => e.active !== false);
+
+  // 従業員（有給入力）… 選んである人がいなくなったら先頭の人にする
+  const hid = document.getElementById('inEmp');
+  if (!forInput.some(e => e.id === hid.value)) hid.value = forInput.length ? forInput[0].id : '';
+  syncInEmpText();
+
+  const book = all.filter(e => (e.type || 'part') === 'part');
+  const sel = document.getElementById('bookEmp');
+  const cur = sel.value;
+  sel.innerHTML = book.map(e =>
+    `<option value="${e.id}">${esc(e.name)}${e.mode === 'swim' ? '（スイミング）' : ''}${e.active === false ? '（退職）' : ''}</option>`
+  ).join('') || '<option value="">（従業員が未登録です）</option>';
+  if (book.some(e => e.id === cur)) sel.value = cur;
+
   document.getElementById('tcNameList').innerHTML =
     tcNames().map(n => `<option value="${esc(n)}"></option>`).join('');
 }
@@ -2013,7 +2139,7 @@ function renderStaffSummary() {
     const termCells = y.terms.map(t =>
       `<td class="num in-cell">
          ${t.workIsAuto
-           ? `<span class="auto-val" title="「通常有給」で入れた ${round2(t.autoDays)}日 から自動計算">${round2(t.autoWork)}<span class="tag auto">自動</span></span>`
+           ? `<span class="auto-val" title="通常有給で入れた ${round2(t.autoDays)}日 から計算">${round2(t.autoWork)}</span>`
            : `<input type="number" class="term-work-in" data-emp="${e.id}" data-term="${t.key}"
                 step="0.5" min="0" placeholder="—" value="${t.work == null ? '' : t.work}">`}
        </td>
@@ -2071,7 +2197,7 @@ function renderStaffSummary() {
       <div class="hint">
         ・「取得回数」＝ その年度に有給を入れた件数（長期休暇の期間中の分は除く）。「有給取得日数」＝ 合計取得時間 ÷ 1日の勤務時間。<br>
         ・<span class="in-head-sample">色つきの欄</span>が長期休暇の${termModeLabel()}。ここに直接入れられます（「✍️ 有給入力」タブでも同じ数字が入れられます）。<br>
-        ・長期休暇の期間中に「通常有給」で入れた日がある人は、${termModeLabel()}を<b>自動計算</b>して「自動」と出します（取得には <b>*</b> 印）。手で打つ必要はありません。<br>
+        ・長期休暇の期間中に通常有給で入れた日がある人は、${termModeLabel()}を計算して出します（取得には <b>*</b> 印）。手で打つ必要はありません。<br>
         ・「1日の勤務時間」は「👤 従業員情報」で各自に合わせて変更できます。
       </div>
     </div>`;
@@ -3208,7 +3334,21 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast(`${n}件の有給を削除しました`, 'success');
   });
 
-  document.getElementById('leaveSearch').addEventListener('input', renderLeaveTable);
+  // 名前は打っても一覧から選んでもいい
+  setupCombo('inEmp', {
+    textId: 'inEmpText', listId: 'inEmpList', arrowId: 'inEmpArrow', valueId: 'inEmp',
+    getItems: empComboItems, syncText: syncInEmpText
+  });
+  setupCombo('leaveSearch', {
+    textId: 'leaveSearch', listId: 'leaveSearchList', arrowId: 'leaveSearchArrow',
+    // 絞り込みなので「全員」も選べるようにする
+    getItems: () => [{ value: '', label: '全員' }, ...empComboItems()],
+    onType: renderLeaveTable,
+    onPick: it => {
+      if (!it.value) document.getElementById('leaveSearch').value = '';
+      renderLeaveTable();
+    }
+  });
   document.getElementById('leaveMonth').addEventListener('change', renderLeaveTable);
   document.getElementById('leaveSort').addEventListener('change', renderLeaveTable);
   document.querySelector('#leaveTable tbody').addEventListener('click', e => {
