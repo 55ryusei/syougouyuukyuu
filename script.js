@@ -1482,6 +1482,31 @@ function cancelEditLeave(keepForm) {
   renderLeaveTable();
 }
 
+/*
+ *  所定の勤務時間帯が未登録のパートさんは、いま入れた時間帯をそのまま所定にできる。
+ *  聞くのは「全日」で入れたときだけ。半休や時間単位の時間帯は1日ぶんの所定ではないため。
+ */
+function maybeSaveShift(emp, times) {
+  if (!emp || (emp.type || 'part') !== 'part') return false;   // 正職に所定の考えは無い
+  if (inputType !== 'full') return false;
+  if (!times.in1 || !times.out1) return false;
+  if ((emp.shift || {}).in1) return false;                     // もう登録してある
+
+  const label = `${times.in1}〜${times.out1}`
+    + (times.in2 && times.out2 ? ` / ${times.in2}〜${times.out2}` : '');
+  if (!confirm(`${emp.name} さんは所定の勤務時間帯が未登録です。\n`
+    + `いま入れた ${label} を所定として登録しますか？\n\n`
+    + '登録しておくと、次からは単位を選ぶだけで時間帯が自動で入ります。')) return false;
+
+  emp.shift = {
+    in1: times.in1, out1: times.out1,
+    in2: times.in2 || '', out2: times.out2 || ''
+  };
+  saveDB();
+  showToast(`${emp.name} さんの所定を ${label} で登録しました`, 'success');
+  return true;
+}
+
 function submitLeave() {
   const emp = getEmp(document.getElementById('inEmp').value);
   if (!emp) { showToast('従業員を選んでください', 'warning'); return; }
@@ -1516,6 +1541,9 @@ function submitLeave() {
     if (!confirm('勤務時間帯が空です。この状態だとTC5用JSONには出力されません（有給の日数管理だけになります）。このまま登録しますか？')) return;
   }
 
+  // 所定が未登録の人は、いま入れた時間帯をそのまま所定にできる
+  const askShift = () => maybeSaveShift(emp, { in1, out1, in2, out2 });
+
   // 編集中なら、その1件を書き換える
   if (editingLeaveId) {
     const l = DB.leaves.find(x => x.id === editingLeaveId);
@@ -1536,6 +1564,7 @@ function submitLeave() {
       note: document.getElementById('inNote').value.trim()
     });
     saveDB();
+    askShift();
     cancelEditLeave();
     renderAll();
     showToast(`${emp.name} ${fmtDate(dates[0])} を更新しました`, 'success');
@@ -1558,6 +1587,7 @@ function submitLeave() {
     added++;
   }
   saveDB();
+  if (added) askShift();
 
   paidSelected.clear();
   syncDatesField();
@@ -1830,8 +1860,55 @@ function renderBook() {
       + '正職の人は「📈 正職集計」タブを見てください。</div>';
     return;
   }
+  box.innerHTML = `<div id="bookPrint">${bookHtml(emp, todayStr())}</div>`;
+}
+
+/* --- 管理簿をまとめて印刷する --- */
+
+// 管理簿の対象（パート方式の人）
+function bookEmployees() {
+  return sortedEmployees().filter(e => (e.type || 'part') === 'part');
+}
+
+function renderBookPick() {
+  const list = bookEmployees();
+  const box = document.getElementById('bookPickList');
+  if (!list.length) {
+    box.innerHTML = '<div class="hint">パート方式の従業員がいません。</div>';
+    document.getElementById('bookPickCount').textContent = '';
+    return;
+  }
+  const cur = new Set(checkedIds('.bookChk'));
+  box.innerHTML = list.map(e =>
+    `<label class="pick-item"><input type="checkbox" class="bookChk" data-id="${e.id}"${cur.has(e.id) ? ' checked' : ''}>`
+    + `${esc(e.name)}${e.mode === 'swim' ? ' <span class="tag swim">SW</span>' : ''}`
+    + `${e.active === false ? '<span class="hint inline">（退職）</span>' : ''}</label>`).join('');
+  updateBookPickCount();
+}
+
+function updateBookPickCount() {
+  const n = checkedIds('.bookChk').length;
+  document.getElementById('bookPickCount').textContent = n ? `${n}人を選択中` : '選んでください';
+  const all = document.getElementById('bookPickAll');
+  const total = bookEmployees().length;
+  all.checked = total > 0 && n === total;
+}
+
+// 選んだ人ぶんを1人1ページで刷る
+function printBooks(ids) {
+  const list = ids.map(getEmp).filter(e => e && (e.type || 'part') === 'part');
+  if (!list.length) { showToast('印刷する人を選んでください', 'warning'); return; }
 
   const asOf = todayStr();
+  document.getElementById('bookBulkPrint').innerHTML = list.map((emp, i) =>
+    `<div class="book-page${i === list.length - 1 ? ' last' : ''}">${bookHtml(emp, asOf)}</div>`).join('');
+
+  printCard('bookBulkPrint', true);
+  showToast(`${list.length}人ぶんを印刷します（1人1ページ）`, 'success');
+}
+
+// 管理簿1人ぶんの中身。画面にもまとめて印刷にも同じものを使う
+function bookHtml(emp, asOf) {
   const g = computeLedger(emp, asOf);
   const shown = g.rows.filter(r => r.started || r === g.next);
 
@@ -1864,8 +1941,7 @@ function renderBook() {
     warn += `<div class="balance-preview"><span class="neg">⚠ 時間単位年休が年5日ぶんを超えています</span>（${fmtDays(g.hourlyOver, emp.dailyHours)}）</div>`;
   }
 
-  box.innerHTML = `
-    <div id="bookPrint">
+  return `
       <div class="book-title">年次有給休暇管理簿</div>
       <table class="book-head"><tbody>
         <tr><th>ふりがな</th><td>${esc(emp.kana || '')}</td>
@@ -1889,8 +1965,7 @@ function renderBook() {
         <span class="take full">05/12</span> のような表示が取得日で、
         <span class="take half">05/13<sub>半</sub></span> は半休、
         <span class="take hours">05/14<sub>4h</sub></span> は時間単位です。
-      </div>
-    </div>`;
+      </div>`;
 }
 
 /* --- 管理簿をExcelで書き出す（見本と同じ列の並び） --- */
@@ -3085,15 +3160,29 @@ function setFsStatus(text, kind) {
 
 // 右上の保存ボタンの表示を状態に合わせる
 // 印刷は押したカードだけ（同じタブに一覧と管理簿が並んでいるため）
-function printCard(innerId) {
+function printCard(innerId, landscape) {
   const inner = document.getElementById(innerId);
   const card = inner && inner.closest('.card');
   if (!card) { window.print(); return; }
   document.body.classList.add('printing');
   card.classList.add('print-target');
+
+  // 用紙の向きは @page でしか決められず、クラスでは出し分けられないので、
+  // 印刷するあいだだけスタイルを差し込んで、終わったら外す
+  let pageStyle = null;
+  if (landscape) {
+    pageStyle = document.createElement('style');
+    pageStyle.textContent = '@page { size: A4 landscape; margin: 8mm; }';
+    document.head.appendChild(pageStyle);
+    document.body.classList.add('printing-wide');
+  }
+
   const clean = () => {
     document.body.classList.remove('printing');
+    document.body.classList.remove('printing-wide');
     card.classList.remove('print-target');
+    if (pageStyle && pageStyle.parentNode) pageStyle.parentNode.removeChild(pageStyle);
+    pageStyle = null;
     window.removeEventListener('afterprint', clean);
   };
   window.addEventListener('afterprint', clean);
@@ -3272,6 +3361,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const b = e.target.closest('button[data-type]');
     if (b) setInputType(b.dataset.type, true);
   });
+  // Enterで登録まで行けるようにする
+  document.getElementById('inCard').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    // 日本語変換の確定Enterは登録に使わない
+    if (e.isComposing || e.keyCode === 229) return;
+    const t = e.target;
+    if (!t || t.tagName !== 'INPUT') return;              // ボタンは元の動きのまま
+    if (t.type === 'checkbox' || t.type === 'radio') return;
+    if (inMode === 'term' || t.closest('#inTermField')) return;   // 長期休暇は打つそばから保存される
+    // 名前の候補が開いているときは、そちらで選ぶほうが先
+    if (!document.getElementById('inEmpList').classList.contains('hidden')) return;
+    e.preventDefault();
+    submitLeave();
+  });
   document.getElementById('inTc5Mode').addEventListener('click', e => {
     const b = e.target.closest('button[data-tc5]');
     if (b) setTc5Mode(b.dataset.tc5);
@@ -3400,7 +3503,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- 残日数一覧 ---
   document.getElementById('bookEmp').addEventListener('change', renderBook);
-  document.getElementById('bookPrintBtn').addEventListener('click', () => printCard('bookPrint'));
+  // 管理簿は列が多いのでA4横で刷る
+  document.getElementById('bookPrintBtn').addEventListener('click', () => printCard('bookPrint', true));
+
+  // まとめて印刷（複数人 / 全員）
+  document.getElementById('bookPrintManyBtn').addEventListener('click', () => {
+    const panel = document.getElementById('bookPickPanel');
+    const opening = panel.classList.contains('hidden');
+    if (opening) renderBookPick();
+    panel.classList.toggle('hidden', !opening);
+  });
+  document.getElementById('bookPickClose').addEventListener('click', () =>
+    document.getElementById('bookPickPanel').classList.add('hidden'));
+  document.getElementById('bookPickAll').addEventListener('change', e => {
+    document.querySelectorAll('.bookChk').forEach(c => { c.checked = e.target.checked; });
+    updateBookPickCount();
+  });
+  document.getElementById('bookPickList').addEventListener('change', e => {
+    if (e.target.closest('.bookChk')) updateBookPickCount();
+  });
+  document.getElementById('bookPickPrint').addEventListener('click', () => printBooks(checkedIds('.bookChk')));
   document.getElementById('bookXlsxOne').addEventListener('click', () => exportBookXlsx('one'));
   document.getElementById('bookXlsxAll').addEventListener('click', () => exportBookXlsx('all'));
 

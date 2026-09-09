@@ -332,6 +332,38 @@ tr.book-future  > td::after { }
   tr.book-future { display: none; }
   .take { border: 1px solid #999; background: none !important; color: #000 !important; }
   .hint { font-size: 9px; }
+
+  /* 管理簿は12列あって紙からはみ出しやすい。
+     table-layout:fixed にすると表の幅は必ず 100%（＝紙幅）に収まり、
+     溢れて右の罫線が切れることがなくなる。列幅は中身の長さで割り振る。 */
+  table.book-table { width: 100%; table-layout: fixed; }
+  table.book-table th, table.book-table td { overflow-wrap: break-word; }
+  table.book-table th:nth-child(1),  table.book-table td:nth-child(1)  { width: 4%; }
+  table.book-table th:nth-child(2),  table.book-table td:nth-child(2)  { width: 9%; }
+  table.book-table th:nth-child(3),  table.book-table td:nth-child(3)  { width: 5%; }
+  table.book-table th:nth-child(4),  table.book-table td:nth-child(4)  { width: 4%; }
+  table.book-table th:nth-child(5),  table.book-table td:nth-child(5)  { width: 4%; }
+  table.book-table th:nth-child(6),  table.book-table td:nth-child(6)  { width: 4%; }
+  table.book-table th:nth-child(7),  table.book-table td:nth-child(7)  { width: 4%; }
+  table.book-table th:nth-child(8),  table.book-table td:nth-child(8)  { width: 5%; }
+  table.book-table th:nth-child(9),  table.book-table td:nth-child(9)  { width: 5%; }
+  table.book-table th:nth-child(10), table.book-table td:nth-child(10) { width: 5%; }
+  table.book-table th:nth-child(11), table.book-table td:nth-child(11) { width: 14%; white-space: normal; }
+  table.book-table th:nth-child(12), table.book-table td:nth-child(12) { width: 37%; }
+  table.book-table td.takes { min-width: 0; white-space: normal; }
+  /* 「入社日から6ヶ月未満」の行は12列ぶんまたぐので幅の指定から外す */
+  table.book-table tr.empty-row td { width: auto; }
+
+  /* A4横で刷るとき。さらに詰めて1ページに収める */
+  body.printing-wide table.book-table { font-size: 9.5px; }
+  body.printing-wide table.book-table th,
+  body.printing-wide table.book-table td { padding: 2px 3px; }
+  body.printing-wide table.book-table thead th { font-size: 9px; }
+  body.printing-wide .take { font-size: 8.5px; padding: 0 3px; margin: 1px 2px 1px 0; }
+  body.printing-wide .take sub { font-size: 7px; }
+  body.printing-wide .book-head th,
+  body.printing-wide .book-head td { padding: 3px 10px; font-size: 11px; }
+  body.printing-wide .book-head .book-name { font-size: 14px; }
 }
 
 /* ---- 正職集計（年度・時間の方式） ---- */
@@ -673,3 +705,28 @@ table.term-table td.md-cell .hint { margin-top: 3px; }
 .combo-sub { margin-left: auto; font-size: 11px; color: var(--text-sub); }
 .combo-item:hover .combo-sub, .combo-item.on .combo-sub { color: var(--accent); }
 .combo-empty { padding: 10px; font-size: 12.5px; color: var(--text-sub); }
+
+/* ===== 管理簿をまとめて印刷（人を選ぶところ） ===== */
+.pick-panel {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 12px; background: var(--bg);
+}
+.pick-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.pick-head .spacer { flex: 1; }
+.pick-list {
+  display: grid; gap: 2px 14px; max-height: 220px; overflow-y: auto;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+}
+.pick-item { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.pick-item input { margin: 0; }
+
+/* まとめて印刷の中身は画面に出さない（印刷のときだけ出す） */
+#bookBulkCard { display: none; }
+
+@media print {
+  /* 1人1ページ。最後の人のあとに空ページを作らない */
+  .book-page { break-after: page; page-break-after: always; }
+  .book-page.last { break-after: auto; page-break-after: auto; }
+  .pick-panel { display: none !important; }
+}

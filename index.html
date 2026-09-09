@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>年次有給休暇 管理ツール 1.0.0</title>
-<link rel="stylesheet" href="styles.css?v=2.14.0">
+<link rel="stylesheet" href="styles.css?v=2.16.0">
 </head>
 <body>
 
@@ -13,7 +13,7 @@
     <span class="brand-icon">🏖</span>
     <div>
       <h1>年次有給休暇 管理ツール</h1>
-      <div class="brand-sub">パートも正職も、入力はここだけ<span class="ver">v2.14.0</span></div>
+      <div class="brand-sub">パートも正職も、入力はここだけ<span class="ver">v2.16.0</span></div>
     </div>
   </div>
   <div class="header-right">
@@ -36,7 +36,7 @@
 <section class="tab-panel active" id="tab-input">
   <div class="grid-2">
 
-    <div class="card">
+    <div class="card" id="inCard">
       <h2>有給を登録</h2>
 
       <div class="field">
@@ -164,11 +164,26 @@
         <select id="bookEmp"></select>
       </div>
       <button type="button" id="bookPrintBtn" class="btn">🖨 印刷</button>
+      <button type="button" id="bookPrintManyBtn" class="btn">🖨 まとめて印刷</button>
       <button type="button" id="bookXlsxOne" class="btn">📗 この人をExcel</button>
       <button type="button" id="bookXlsxAll" class="btn primary">📗 全員をExcel</button>
     </div>
+
+    <div class="pick-panel hidden" id="bookPickPanel">
+      <div class="pick-head">
+        <label class="chk-all"><input type="checkbox" id="bookPickAll"> 全員選ぶ</label>
+        <span class="hint inline" id="bookPickCount"></span>
+        <span class="spacer"></span>
+        <button type="button" id="bookPickPrint" class="btn primary small">選んだ人を印刷</button>
+        <button type="button" id="bookPickClose" class="btn small">閉じる</button>
+      </div>
+      <div class="pick-list" id="bookPickList"></div>
+      <div class="hint">1人1ページで、A4横で刷ります。</div>
+    </div>
+
     <div id="bookArea"></div>
   </div>
+
 
   <div class="card">
     <h2>全員の残日数（本日時点）</h2>
@@ -455,11 +470,15 @@
 
 </section>
 
+
+<!-- まとめて印刷のときだけ中身を入れる。どのタブにも属さない（画面には出さない） -->
+<div class="card" id="bookBulkCard"><div id="bookBulkPrint"></div></div>
+
 </main>
 
 <div id="toastArea"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
-<script src="script.js?v=2.14.0"></script>
+<script src="script.js?v=2.16.0"></script>
 </body>
 </html>
