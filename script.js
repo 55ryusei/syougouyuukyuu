@@ -1863,6 +1863,60 @@ function renderBook() {
   box.innerHTML = `<div id="bookPrint">${bookHtml(emp, todayStr())}</div>`;
 }
 
+/* --- 有給が発生（付与）した人のお知らせ --- */
+
+// 今月と来月に付与がある人を拾う
+function grantNotices(asOf) {
+  const d = parseDate(asOf);
+  const thisYm = asOf.slice(0, 7);
+  const nx = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  const nextYm = `${nx.getFullYear()}-${pad2(nx.getMonth() + 1)}`;
+
+  const thisMonth = [], nextMonth = [];
+  for (const emp of sortedEmployees()) {
+    if ((emp.type || 'part') !== 'part' || emp.active === false) continue;
+    for (const r of computeLedger(emp, asOf).rows) {
+      const ym = r.from.slice(0, 7);
+      if (ym === thisYm) thisMonth.push({ emp, row: r });
+      else if (ym === nextYm) nextMonth.push({ emp, row: r });
+    }
+  }
+  const byDate = (a, b) => (a.row.from < b.row.from ? -1 : a.row.from > b.row.from ? 1 : 0);
+  return { thisYm, nextYm, thisMonth: thisMonth.sort(byDate), nextMonth: nextMonth.sort(byDate) };
+}
+
+function renderGrantNotice() {
+  const asOf = todayStr();
+  const n = grantNotices(asOf);
+  const card = document.getElementById('grantNoticeCard');
+  // 誰もいない月は出さない（いつも出ていると見なくなるため）
+  if (!n.thisMonth.length && !n.nextMonth.length) {
+    card.classList.add('hidden');
+    return;
+  }
+  card.classList.remove('hidden');
+
+  const ymText = ym => `${Number(ym.slice(0, 4))}年${Number(ym.slice(5, 7))}月`;
+  const line = ({ emp, row }) => {
+    const diff = daysBetween(asOf, row.from);
+    const state = diff < 0 ? '<span class="tag done">済</span>'
+      : diff === 0 ? '<span class="tag today">本日</span>'
+        : `<span class="hint inline">あと${diff}日</span>`;
+    return `<li><span class="gn-date">${fmtDate(row.from)}</span>`
+      + `<span class="gn-name">${esc(emp.name)}${emp.mode === 'swim' ? ' <span class="tag swim">SW</span>' : ''}</span>`
+      + `<b class="gn-days">${row.grant}日</b>${state}</li>`;
+  };
+  const block = (label, list) => list.length
+    ? `<div class="gn-block"><div class="gn-head">${label}　<span class="count">${list.length}人</span></div>`
+      + `<ul class="gn-list">${list.map(line).join('')}</ul></div>`
+    : '';
+
+  document.getElementById('grantNoticeArea').innerHTML =
+    block(`今月（${ymText(n.thisYm)}）に発生`, n.thisMonth)
+    + block(`来月（${ymText(n.nextYm)}）に発生`, n.nextMonth)
+    + '<div class="hint">付与日は入社日から自動で決まります。日数は週の所定労働日数と勤続年数から法定表どおりに出しています。</div>';
+}
+
 /* --- 管理簿をまとめて印刷する --- */
 
 // 管理簿の対象（パート方式の人）
@@ -1894,17 +1948,103 @@ function updateBookPickCount() {
   all.checked = total > 0 && n === total;
 }
 
+/*
+ *  管理簿の印刷用スタイル。
+ *
+ *  画面用の styles.css は使わない。アプリ画面をそのまま刷ろうとすると、
+ *  画面用の指定（nowrap・最小幅・タブやカードの出し分け）が絡んで紙からはみ出す。
+ *  刷るのは管理簿だけなので、専用のページを作ってこれだけを当てる。
+ *  table-layout:fixed ＋ 合計100%の列幅で、表は必ず紙幅に収まる。
+ */
+const BOOK_PRINT_CSS = `
+@page { size: A4 landscape; margin: 8mm; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: #fff; color: #000;
+  font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  font-size: 9.5px; line-height: 1.5;
+}
+.book-page { page-break-after: always; break-after: page; }
+.book-page:last-child { page-break-after: auto; break-after: auto; }
+.book-title {
+  font-size: 15px; font-weight: 700; text-align: center;
+  letter-spacing: .25em; margin: 0 0 8px;
+}
+table.book-head { border-collapse: collapse; margin-bottom: 8px; }
+table.book-head th, table.book-head td {
+  border: 1px solid #666; padding: 3px 10px; font-size: 10.5px; white-space: nowrap;
+}
+table.book-head th { background: #eee; font-weight: 600; text-align: left; }
+table.book-head .book-name { font-size: 13px; font-weight: 700; }
+table.book-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+table.book-table th, table.book-table td {
+  border: 1px solid #666; padding: 2px 3px; text-align: center; overflow-wrap: break-word;
+}
+table.book-table thead th { background: #eee; font-size: 9px; line-height: 1.25; }
+table.book-table tr.book-current > td { background: #f2f2f2; }
+table.book-table tr.book-future { display: none; }
+table.book-table td.takes { text-align: left; }
+table.book-table th:nth-child(1),  table.book-table td:nth-child(1)  { width: 4%; }
+table.book-table th:nth-child(2),  table.book-table td:nth-child(2)  { width: 9%; }
+table.book-table th:nth-child(3),  table.book-table td:nth-child(3)  { width: 5%; }
+table.book-table th:nth-child(4),  table.book-table td:nth-child(4)  { width: 4%; }
+table.book-table th:nth-child(5),  table.book-table td:nth-child(5)  { width: 4%; }
+table.book-table th:nth-child(6),  table.book-table td:nth-child(6)  { width: 4%; }
+table.book-table th:nth-child(7),  table.book-table td:nth-child(7)  { width: 4%; }
+table.book-table th:nth-child(8),  table.book-table td:nth-child(8)  { width: 5%; }
+table.book-table th:nth-child(9),  table.book-table td:nth-child(9)  { width: 5%; }
+table.book-table th:nth-child(10), table.book-table td:nth-child(10) { width: 5%; }
+table.book-table th:nth-child(11), table.book-table td:nth-child(11) { width: 14%; }
+table.book-table th:nth-child(12), table.book-table td:nth-child(12) { width: 37%; }
+table.book-table tr.empty-row td { width: auto; padding: 14px; color: #444; }
+.take {
+  display: inline-block; border: 1px solid #999; border-radius: 4px;
+  padding: 0 3px; margin: 1px 2px 1px 0; font-size: 8.5px; white-space: nowrap;
+}
+.take sub { font-size: 7px; vertical-align: baseline; margin-left: 1px; }
+.balance-preview { border: 1px solid #999; padding: 4px 8px; font-size: 10px; margin-bottom: 6px; }
+.hint { font-size: 8.5px; color: #444; margin-top: 4px; }
+.hint.inline { display: inline; }
+input { font: inherit; color: #000; border: none; background: none; padding: 0; text-align: center; width: 100%; }
+input[type=number] { -webkit-appearance: none; appearance: none; }
+input[type=checkbox] { width: auto; }
+.danger-text { font-weight: 700; }
+`;
+
 // 選んだ人ぶんを1人1ページで刷る
 function printBooks(ids) {
   const list = ids.map(getEmp).filter(e => e && (e.type || 'part') === 'part');
   if (!list.length) { showToast('印刷する人を選んでください', 'warning'); return; }
 
   const asOf = todayStr();
-  document.getElementById('bookBulkPrint').innerHTML = list.map((emp, i) =>
-    `<div class="book-page${i === list.length - 1 ? ' last' : ''}">${bookHtml(emp, asOf)}</div>`).join('');
+  const pages = list.map(emp => `<div class="book-page">${bookHtml(emp, asOf)}</div>`).join('');
+  const title = list.length === 1 ? `年次有給休暇管理簿_${list[0].name}` : `年次有給休暇管理簿_${list.length}名`;
 
-  printCard('bookBulkPrint', true);
-  showToast(`${list.length}人ぶんを印刷します（1人1ページ）`, 'success');
+  const w = window.open('', '_blank');
+  if (!w) {
+    // ポップアップが止められたときは、これまでのやり方で刷る
+    document.getElementById('bookBulkPrint').innerHTML = pages;
+    printCard('bookBulkPrint', true);
+    showToast('新しいタブが開けなかったので、この画面から印刷します', 'warning');
+    return;
+  }
+  w.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">`
+    + `<title>${esc(title)}</title><style>${BOOK_PRINT_CSS}</style></head>`
+    + `<body>${pages}</body></html>`);
+  w.document.close();
+  // 中身が組み上がってから刷る。刷り終わったら閉じる
+  w.onload = () => {
+    w.focus();
+    w.print();
+    w.onafterprint = () => w.close();
+    setTimeout(() => { if (!w.closed) w.close(); }, 60000);   // 閉じ忘れの保険
+  };
+  showToast(`${list.length}人ぶんを新しいタブで印刷します（1人1ページ・A4横）`, 'success');
+}
+
+// 2つの日付の差（日数）
+function daysBetween(from, to) {
+  return Math.round((parseDate(to) - parseDate(from)) / 86400000);
 }
 
 // 管理簿1人ぶんの中身。画面にもまとめて印刷にも同じものを使う
@@ -1948,8 +2088,6 @@ function bookHtml(emp, asOf) {
             <th>入社日</th><td>${fmtDate(emp.hire)}</td></tr>
         <tr><th>氏　名</th><td class="book-name">${esc(emp.name)}</td>
             <th>勤続年数</th><td>${serviceLength(emp.hire, asOf)}</td></tr>
-        <tr><th>週労働日数</th><td>${emp.weekDays}日<span class="hint">（既定）</span></td>
-            <th>1日の所定</th><td>${emp.dailyHours}時間</td></tr>
       </tbody></table>
       ${warn}
       <div class="table-wrap">
@@ -3269,6 +3407,7 @@ function renderAll() {
   refreshPurgeEmpSelect();
   renderPurgePreview();
   renderLedgerTable();
+  renderGrantNotice();
   renderBook();
   renderTermInput();
   renderStaffGrid();
@@ -3503,8 +3642,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- 残日数一覧 ---
   document.getElementById('bookEmp').addEventListener('change', renderBook);
-  // 管理簿は列が多いのでA4横で刷る
-  document.getElementById('bookPrintBtn').addEventListener('click', () => printCard('bookPrint', true));
+  // 管理簿は専用ページを作って刷る（1人でもまとめてでも同じ道を通る）
+  document.getElementById('bookPrintBtn').addEventListener('click', () =>
+    printBooks([document.getElementById('bookEmp').value]));
 
   // まとめて印刷（複数人 / 全員）
   document.getElementById('bookPrintManyBtn').addEventListener('click', () => {

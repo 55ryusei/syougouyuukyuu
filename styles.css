@@ -730,3 +730,20 @@ table.term-table td.md-cell .hint { margin-top: 3px; }
   .book-page.last { break-after: auto; page-break-after: auto; }
   .pick-panel { display: none !important; }
 }
+
+/* ===== 有給の発生（付与）のお知らせ ===== */
+.gn-block + .gn-block { margin-top: 12px; }
+.gn-head { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.gn-list { list-style: none; margin: 0; padding: 0; }
+.gn-list li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 10px; font-size: 13.5px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+}
+.gn-list li + li { margin-top: 4px; }
+.gn-date { min-width: 92px; color: var(--text-sub); font-size: 12.5px; }
+.gn-name { flex: 1; }
+.gn-days { font-size: 15px; color: var(--accent); }
+.tag.done  { background: var(--border); color: var(--text-sub); }
+.tag.today { background: #fff2df; color: #b26a00; }
+[data-theme="dark"] .tag.today { background: #3a2a10; color: #ffb340; }
